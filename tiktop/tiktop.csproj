@@ -6,6 +6,16 @@
     <RootNamespace>tiktop</RootNamespace>
     <AssemblyName>tiktop</AssemblyName>
     <Nullable>enable</Nullable>
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
+  <!-- Single-file publish settings (activated via -p:PublishSingleFile=true) -->
+  <PropertyGroup Condition="'$(PublishSingleFile)' == 'true'">
+    <SelfContained>true</SelfContained>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <!-- Trimming off: tik4net and DnsClient rely on reflection -->
+    <PublishTrimmed>false</PublishTrimmed>
   </PropertyGroup>
 
   <ItemGroup>
