@@ -1,8 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.Net;
+using tik4net.Objects.Tool;
 
 namespace tiktop.Data
 {
@@ -10,40 +10,41 @@ namespace tiktop.Data
     {
         private const int MAX_SECTIONS_CACHE_SIZE = 50;
 
+        private readonly IReadOnlyList<IPNetwork> _localNetworks;
         private object _lockObj = new object();
         private Dictionary<long, DataStackSection> _itemsPerSection = new Dictionary<long, DataStackSection>(); //<index, Item>
         private long _txPeak;
         private long _rxPeak;
         private long _totalPeak;
 
-        public DataStack()
+        public DataStack(IReadOnlyList<IPNetwork> localNetworks)
         {
-
+            _localNetworks = localNetworks;
         }
 
-        public void AddRow(IReadOnlyDictionary<string, string> items)
+        public void AddRow(ToolTorch torch)
         {
-            long sectionIndex = long.Parse(items[".section"]);
-
             lock (_lockObj)
             {
-                if (items.ContainsKey("src-address"))
-                { //.tag=1|mac-protocol=ip|src-address=10.43.94.205|src-port=53 (dns)|dst-address=10.43.109.114|dst-port=50587|tx=616|rx=4296|tx-packets=1|rx-packets=1|.section=9
-                    string srcAddress = items["src-address"];
-                    string srcPort = items["src-port"];
-                    string dstAddress = items["dst-address"];
-                    string dstPort = items["src-port"];
-                    long tx = long.Parse(items["tx"]);
-                    long rx = long.Parse(items["rx"]);
-                    AddIpTraffic(sectionIndex, srcAddress, srcPort, dstAddress, dstPort, tx, rx);
+                if (string.IsNullOrEmpty(torch.SrcAddress))
+                {
+                    AddTotalTraffic(torch.SectionNr, torch.Tx, torch.Rx);
+                    return;
                 }
+
+                // Normalize: local address is always treated as src so flows aggregate correctly
+                // regardless of which direction initiated the connection.
+                if (_localNetworks.Count > 0 && IsLocal(torch.DstAddress) && !IsLocal(torch.SrcAddress))
+                    AddIpTraffic(torch.SectionNr, torch.DstAddress, torch.DstPort, torch.SrcAddress, torch.SrcPort, torch.Rx, torch.Tx);
                 else
-                { //.tag=1|tx=18960|rx=49360|tx-packets=12|rx-packets=12|.section=10
-                    long tx = long.Parse(items["tx"]);
-                    long rx = long.Parse(items["rx"]);
-                    AddTotalTraffic(sectionIndex, tx, rx);
-                }
+                    AddIpTraffic(torch.SectionNr, torch.SrcAddress, torch.SrcPort, torch.DstAddress, torch.DstPort, torch.Tx, torch.Rx);
             }
+        }
+
+        private bool IsLocal(string address)
+        {
+            return IPAddress.TryParse(address, out var ip)
+                && _localNetworks.Any(n => n.Contains(ip));
         }
 
         private void AddTotalTraffic(long section, long tx, long rx)

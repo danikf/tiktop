@@ -5,6 +5,10 @@ VisualStudioVersion = 15.0.27130.2010
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "tiktop", "tiktop\tiktop.csproj", "{062A0F50-07E7-4D80-8E2B-AE190A195B95}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "tik4net", "..\..\tik4net\tik4net\tik4net\tik4net.csproj", "{15288F76-5A85-418E-87B2-B22265726601}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "tik4net.objects", "..\..\tik4net\tik4net\tik4net.objects\tik4net.objects.csproj", "{DD32E354-19C0-4992-902B-9CDD8E53E879}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +19,14 @@ Global
 		{062A0F50-07E7-4D80-8E2B-AE190A195B95}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{062A0F50-07E7-4D80-8E2B-AE190A195B95}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{062A0F50-07E7-4D80-8E2B-AE190A195B95}.Release|Any CPU.Build.0 = Release|Any CPU
+		{15288F76-5A85-418E-87B2-B22265726601}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{15288F76-5A85-418E-87B2-B22265726601}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{15288F76-5A85-418E-87B2-B22265726601}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{15288F76-5A85-418E-87B2-B22265726601}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DD32E354-19C0-4992-902B-9CDD8E53E879}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DD32E354-19C0-4992-902B-9CDD8E53E879}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DD32E354-19C0-4992-902B-9CDD8E53E879}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DD32E354-19C0-4992-902B-9CDD8E53E879}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
