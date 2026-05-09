@@ -75,6 +75,7 @@ All parameters are optional — any missing value is prompted interactively at s
 | `--no-ssl` | | SSL on | Use plain (non-SSL) API connection |
 | `--count <n>` | `-n` | auto | Number of connection rows to display |
 | `--dns-server <ip>` | `-d` | system DNS | Custom DNS server for reverse lookups |
+| `--no-save` | | | Do not auto-save connection as `_last` profile |
 | `--help` | `-h` | | Show help and exit |
 
 ### Examples
@@ -134,7 +135,7 @@ Profiles are stored in:
 | `q` / `Esc` | Quit |
 | `p` | Cycle sort order: **Total → TX → RX** |
 | `r` | Reset all peak values |
-| `d` | Toggle DNS hostname display on / off |
+| `d` | Cycle address/port display: **dns+svc → ip+port → ip+svc** (DNS hostname + service name / raw IP + port number / raw IP + service name) |
 | `t` | Cycle display mode: **Both → TX only → RX only** (doubles visible connections in single-direction modes) |
 | `+` | Show one more row |
 | `-` | Show one fewer row |

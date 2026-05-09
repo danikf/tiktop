@@ -6,7 +6,15 @@ using tiktop.Helpers;
 
 namespace tiktop
 {
-    public enum DisplayMode { Both, TxOnly, RxOnly }
+    public enum DisplayMode  { Both, TxOnly, RxOnly }
+
+    /// <summary>
+    /// Controls how addresses and ports are shown in item rows.
+    /// DnsService  = hostname + service name  (e.g. ec2.amazonaws.com:https)
+    /// IpPort      = raw IP   + port number   (e.g. 1.2.3.4:443)
+    /// IpService   = raw IP   + service name  (e.g. 1.2.3.4:https)
+    /// </summary>
+    public enum ResolveMode { DnsService, IpPort, IpService }
 
     class Visualiser : IDisposable
     {
@@ -24,7 +32,7 @@ namespace tiktop
 
         private string _statusMessage = "Connected";
         private ConsoleColor _statusColor = ConsoleColor.Green;
-        private bool _showDns = true;
+        private ResolveMode _resolveMode = ResolveMode.DnsService;
         private int? _countOverride;
         private DisplayMode _displayMode = DisplayMode.Both;
 
@@ -34,7 +42,7 @@ namespace tiktop
         public int NrOfItems => _countOverride.HasValue
             ? Math.Min(_countOverride.Value, NrOfItemsAuto)
             : NrOfItemsAuto;
-        public bool ShowDns => _showDns;
+        public ResolveMode ResolveMode => _resolveMode;
         public DisplayMode DisplayMode => _displayMode;
 
         public Visualiser(DnsCache dnsCache)
@@ -48,7 +56,11 @@ namespace tiktop
             lock (_lockObj) { _statusMessage = message; _statusColor = color; }
         }
 
-        public void ToggleDns() { lock (_lockObj) _showDns = !_showDns; }
+        public void CycleResolveMode()
+        {
+            lock (_lockObj)
+                _resolveMode = (ResolveMode)(((int)_resolveMode + 1) % 3);
+        }
 
         public void CycleDisplayMode()
         {
@@ -165,15 +177,21 @@ namespace tiktop
 
             foreach (var ip in data.TopIpTraffic.Take(cnt))
             {
+                bool useDns     = _resolveMode == ResolveMode.DnsService;
+                bool useSvcName = _resolveMode != ResolveMode.IpPort;
+
                 string local = FormatHelper.ShortenHostname(
-                    (_showDns ? _dnsCache.TryGet(ip.LastSection.SrcAddress) : null)
+                    (useDns ? _dnsCache.TryGet(ip.LastSection.SrcAddress) : null)
                     ?? ip.LastSection.SrcAddress, aw);
 
-                // Remote: hostname + destination port
-                string hostname = (_showDns ? _dnsCache.TryGet(ip.LastSection.DstAddress) : null)
-                                  ?? ip.LastSection.DstAddress;
-                string portSuffix = FormatHelper.FormatPort(ip.LastSection.DstPort);
-                string remoteHost = FormatHelper.ShortenHostname(hostname, Math.Max(1, aw - portSuffix.Length));
+                // Remote: address + destination port (service name or raw number)
+                string dstHostname = (useDns ? _dnsCache.TryGet(ip.LastSection.DstAddress) : null)
+                                     ?? ip.LastSection.DstAddress;
+                string portSuffix = useSvcName
+                    ? FormatHelper.FormatPort(ip.LastSection.DstPort)
+                    : (string.IsNullOrEmpty(ip.LastSection.DstPort) || ip.LastSection.DstPort == "0"
+                        ? "" : ":" + ip.LastSection.DstPort);
+                string remoteHost = FormatHelper.ShortenHostname(dstHostname, Math.Max(1, aw - portSuffix.Length));
                 string remote     = (remoteHost + portSuffix).SafePrefix(aw);
 
                 long txS = (long)ip.ShortRange .Average(s => (double)s.Tx);

@@ -48,8 +48,9 @@ namespace tiktop
 
                 var stack = new DataStack(localNetworks);
 
-                // Auto-save as _last (with encrypted password)
-                SaveLastProfile(cfg);
+                // Auto-save as _last (with encrypted password), unless --no-save was passed
+                if (!cfg.NoSave)
+                    SaveLastProfile(cfg);
 
                 // If --save-as was requested, save named profile now
                 if (cfg.SaveAs != null)
@@ -70,15 +71,20 @@ namespace tiktop
 
                     void UpdateStatus()
                     {
-                        string sort = stack.SortMode.ToString();
-                        string dns  = visualiser.ShowDns ? "DNS:on" : "DNS:off";
+                        string sort    = stack.SortMode.ToString();
+                        string resolve = visualiser.ResolveMode switch {
+                            ResolveMode.DnsService => "dns+svc",
+                            ResolveMode.IpPort     => "ip+port",
+                            ResolveMode.IpService  => "ip+svc",
+                            _                      => "?"
+                        };
                         string disp = visualiser.DisplayMode switch {
                             DisplayMode.TxOnly => " | TX-only",
                             DisplayMode.RxOnly => " | RX-only",
                             _                  => ""
                         };
                         visualiser.SetStatus(
-                            $"sort:{sort} | {dns}{disp} | q:quit p:sort r:reset d:dns t:TX/RX ±:rows",
+                            $"sort:{sort} | {resolve}{disp} | q:quit p:sort r:reset d:addr t:TX/RX ±:rows",
                             ConsoleColor.Green);
                     }
 
@@ -111,7 +117,7 @@ namespace tiktop
                                 break;
 
                             case ConsoleKey.D:
-                                visualiser.ToggleDns();
+                                visualiser.CycleResolveMode();
                                 UpdateStatus();
                                 break;
 
