@@ -60,6 +60,15 @@ namespace tiktop
                             stopped.Set();
                         });
 
+                    void UpdateStatus()
+                    {
+                        string sort = stack.SortMode.ToString();
+                        string dns  = visualiser.ShowDns ? "DNS:on" : "DNS:off";
+                        visualiser.SetStatus($"sort:{sort} | {dns} | q:quit p:sort r:reset d:dns ±:rows", ConsoleColor.Green);
+                    }
+
+                    UpdateStatus();
+
                     using var timer = new Timer(_ =>
                     {
                         var snapshot = stack.CreateSnapshot(visualiser.NrOfItems);
@@ -71,9 +80,38 @@ namespace tiktop
                     {
                         if (!Console.KeyAvailable) continue;
                         var key = Console.ReadKey(intercept: true);
-                        if (key.Key == ConsoleKey.Q || key.Key == ConsoleKey.Escape)
-                            break;
+                        switch (key.Key)
+                        {
+                            case ConsoleKey.Q:
+                            case ConsoleKey.Escape:
+                                goto exitLoop;
+
+                            case ConsoleKey.P:
+                                stack.CycleSortMode();
+                                UpdateStatus();
+                                break;
+
+                            case ConsoleKey.R:
+                                stack.ResetPeaks();
+                                break;
+
+                            case ConsoleKey.D:
+                                visualiser.ToggleDns();
+                                UpdateStatus();
+                                break;
+
+                            case ConsoleKey.Add:
+                            case ConsoleKey.OemPlus:
+                                visualiser.AdjustRowCount(+1);
+                                break;
+
+                            case ConsoleKey.Subtract:
+                            case ConsoleKey.OemMinus:
+                                visualiser.AdjustRowCount(-1);
+                                break;
+                        }
                     }
+                    exitLoop:
 
                     // If disconnected, give user a moment to read the status message
                     if (stopped.IsSet)
