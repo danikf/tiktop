@@ -47,6 +47,14 @@ namespace tiktop
                 }
 
                 var stack = new DataStack(localNetworks);
+
+                // Auto-save as _last (with encrypted password)
+                SaveLastProfile(cfg);
+
+                // If --save-as was requested, save named profile now
+                if (cfg.SaveAs != null)
+                    SaveNamedProfile(cfg);
+
                 var stopped = new ManualResetEventSlim(false);
 
                 using (var visualiser = new Visualiser(dnsCache))
@@ -117,6 +125,30 @@ namespace tiktop
                     if (stopped.IsSet)
                         Thread.Sleep(2000);
                 }
+            }
+        }
+
+        private static void SaveLastProfile(ConnectionConfig cfg)
+        {
+            try { new ProfileManager().Save("_last", cfg, savePassword: true); }
+            catch { /* non-fatal */ }
+        }
+
+        private static void SaveNamedProfile(ConnectionConfig cfg)
+        {
+            Console.Write($"Save password in profile '{cfg.SaveAs}'? [y/N]: ");
+            bool savePass = Console.ReadLine()?.Trim().Equals("y", StringComparison.OrdinalIgnoreCase) == true;
+            try
+            {
+                new ProfileManager().Save(cfg.SaveAs!, cfg, savePassword: savePass);
+                string note = savePass ? " (password encrypted)" : " (no password saved)";
+                Console.WriteLine($"Profile '{cfg.SaveAs}' saved.{note}");
+                Console.WriteLine($"Location: {ProfileManager.ConfigDir}");
+                Thread.Sleep(1500);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Warning: could not save profile: {ex.Message}");
             }
         }
 

@@ -93,6 +93,40 @@ tiktop -H 192.168.1.1 -u admin --no-ssl --dns-server 8.8.8.8
 tiktop -H 192.168.1.1 -u admin --count 20
 ```
 
+## Connection profiles
+
+tiktop remembers your last connection and supports named profiles so you never have to retype the same parameters.
+
+### How it works
+
+- **Last used** — after every successful connection all parameters (including the encrypted password) are automatically saved as `_last`. Next time you run tiktop, values are offered as defaults in brackets:
+  ```
+  Host [192.168.1.1]:        ← press Enter to accept
+  Username [admin]:
+  Password [saved]:          ← press Enter to use saved password
+  ```
+- **Named profiles** — save a profile explicitly with `--save-as`, load it with `--profile`:
+  ```bash
+  tiktop --save-as home-router     # saves after connecting, asks about password
+  tiktop --profile home-router     # loads all fields, no prompts
+  ```
+- **List / delete:**
+  ```bash
+  tiktop --list-profiles
+  tiktop --delete-profile home-router
+  ```
+
+### Password security
+
+| Platform | Method |
+|----------|--------|
+| Windows  | [DPAPI](https://learn.microsoft.com/en-us/dotnet/standard/security/how-to-use-data-protection) — encrypted with your Windows user account key |
+| Linux / macOS | AES-GCM with machine+user derived key; config file permissions set to `600` |
+
+Profiles are stored in:
+- **Windows:** `%APPDATA%\tiktop\profiles.json`
+- **Linux / macOS:** `~/.config/tiktop/profiles.json`
+
 ## Keyboard controls
 
 | Key | Action |
