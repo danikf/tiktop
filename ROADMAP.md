@@ -147,6 +147,12 @@ Implementace: samostatné vlákno čtoucí `Console.ReadKey(intercept: true)` v 
 
 ---
 
+## Náměty / nápady (neimplementováno)
+
+- **Relativní bary** – aktuálně se každý bar škáluje na globální `PeakTotal`. Alternativa: každé připojení má vlastní peak, bar vždy dobře využívá šířku. Riziko: ztráta vzájemného srovnání velikostí provozů.
+
+---
+
 ## Poznámky k architektuře
 
 - **Datový tok** zůstává: MikroTik → `MikrotikWrapper` → `DataStack` → `DataSnapshot` → `Visualiser`.
