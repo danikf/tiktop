@@ -17,8 +17,14 @@ namespace tiktop
 
         private string _statusMessage = "Connected";
         private ConsoleColor _statusColor = ConsoleColor.Green;
+        private bool _showDns = true;
+        private int? _countOverride;
 
-        public int NrOfItems => Math.Max(0, (Console.WindowHeight - headerHeight - footerHeight) / 2);
+        private int NrOfItemsAuto => Math.Max(0, (Console.WindowHeight - headerHeight - footerHeight) / 2);
+        public int NrOfItems => _countOverride.HasValue
+            ? Math.Min(_countOverride.Value, NrOfItemsAuto)
+            : NrOfItemsAuto;
+        public bool ShowDns => _showDns;
 
         public void SetStatus(string message, ConsoleColor color = ConsoleColor.Red)
         {
@@ -26,6 +32,21 @@ namespace tiktop
             {
                 _statusMessage = message;
                 _statusColor = color;
+            }
+        }
+
+        public void ToggleDns()
+        {
+            lock (_lockObj)
+                _showDns = !_showDns;
+        }
+
+        public void AdjustRowCount(int delta)
+        {
+            lock (_lockObj)
+            {
+                int current = _countOverride ?? NrOfItemsAuto;
+                _countOverride = Math.Max(1, current + delta);
             }
         }
 
@@ -118,9 +139,9 @@ namespace tiktop
             foreach (var ip in data.TopIpTraffic.Take(cnt))
             {
                 string local  = FormatHelper.ShortenHostname(
-                    _dnsCache.TryGet(ip.LastSection.SrcAddress) ?? ip.LastSection.SrcAddress, addrWidth);
+                    (_showDns ? _dnsCache.TryGet(ip.LastSection.SrcAddress) : null) ?? ip.LastSection.SrcAddress, addrWidth);
                 string remote = FormatHelper.ShortenHostname(
-                    _dnsCache.TryGet(ip.LastSection.DstAddress) ?? ip.LastSection.DstAddress, addrWidth);
+                    (_showDns ? _dnsCache.TryGet(ip.LastSection.DstAddress) : null) ?? ip.LastSection.DstAddress, addrWidth);
 
                 long txShort  = (long)ip.ShortRange.Average(s => (double)s.Tx);
                 long txMedium = (long)ip.MediumRange.Average(s => (double)s.Tx);

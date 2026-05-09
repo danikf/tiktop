@@ -55,9 +55,15 @@ namespace tiktop.Data
             _isFinalized = true;
         }
 
-        internal IEnumerable<DataStackSectionIp> GetTopIps(int nrOfItems)
+        internal IEnumerable<DataStackSectionIp> GetTopIps(int nrOfItems, SortMode sort = SortMode.Total)
         {
-            return _ipItems.Values.OrderByDescending(i => i.Total).Take(nrOfItems);
+            Func<DataStackSectionIp, long> key = sort switch
+            {
+                SortMode.Tx => i => i.Tx,
+                SortMode.Rx => i => i.Rx,
+                _           => i => i.Total,
+            };
+            return _ipItems.Values.OrderByDescending(key).Take(nrOfItems);
         }
 
         internal DataStackSectionIp GetIpTraffic(DataStackSectionIp ip)

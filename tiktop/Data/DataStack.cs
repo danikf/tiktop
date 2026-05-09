@@ -6,6 +6,8 @@ using tik4net.Objects.Tool;
 
 namespace tiktop.Data
 {
+    public enum SortMode { Total, Tx, Rx }
+
     public class DataStack
     {
         private const int MAX_SECTIONS_CACHE_SIZE = 50;
@@ -17,9 +19,23 @@ namespace tiktop.Data
         private long _rxPeak;
         private long _totalPeak;
 
+        public SortMode SortMode { get; private set; } = SortMode.Total;
+
         public DataStack(IReadOnlyList<IPNetwork> localNetworks)
         {
             _localNetworks = localNetworks;
+        }
+
+        public void CycleSortMode()
+        {
+            lock (_lockObj)
+                SortMode = (SortMode)(((int)SortMode + 1) % 3);
+        }
+
+        public void ResetPeaks()
+        {
+            lock (_lockObj)
+                _txPeak = _rxPeak = _totalPeak = 0;
         }
 
         public void AddRow(ToolTorch torch)
@@ -107,7 +123,7 @@ namespace tiktop.Data
 
             items = items.OrderBy(iPair => iPair.SectionNr).ToArray(); //sort after lock
 
-            var topIpTraffic = lastFinalizedSection.GetTopIps(nrOfItems).Select(i=> 
+            var topIpTraffic = lastFinalizedSection.GetTopIps(nrOfItems, SortMode).Select(i=>
                 new DataSnapshotIpRow(i, 
                     items.Take(shortWindowCnt).Select(ii=>ii.GetIpTraffic(i)).ToArray(),
                     items.Take(mediumWindowCnt).Select(ii => ii.GetIpTraffic(i)).ToArray(),
