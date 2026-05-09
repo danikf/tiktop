@@ -147,6 +147,29 @@ Implementace: samostatné vlákno čtoucí `Console.ReadKey(intercept: true)` v 
 
 ---
 
+## Backlog – zjištěné problémy a nápady
+
+### Řazení
+- **Řadit od nejaktivnějších** – aktuálně podle `SortMode` (Total/TX/RX), ale otázka je, podle jakého okna. Návrh: řadit podle nejdlouhodobějšího průměru (40s), aby drobné výbuchy netlačily dolů stabilní toky. Potenciálně přidat samostatný `SortWindow` (short/medium/long) jako další cyklus.
+
+### Nové klávesové zkratky
+- **Freeze/unfreeze** (`f` nebo mezerník) – pozastaví aktualizaci displeje (data se dál sbírají na pozadí), umožní číst obsah obrazovky bez blikání. Unfreeze obnoví přereslování.
+
+### Vizuální chyby
+- **Ujíždí sloupec o 1 znak doprava** – občas se pravý okraj posune o jeden znak. Pravděpodobně off-by-one v `ComputeLayout` nebo v šířce prefixu (`2*aw+5`). Prošetřit přesné počítání znaků.
+- **Zelený otazník na prvním sloupci baru** – občas zůstane zelený artefakt `?` (nebo jiný znak) na začátku barového sloupce. Pravděpodobně zbytková barva z předchozího renderu při dirty-check miss. Prošetřit `ColoredRow` + reset barvy.
+
+### Layout inspirovaný iftop
+- **Bary přes celou šířku** – iftop vykresluje bar po celé šířce řádku (scale odpovídá celé obrazovce), čímž šetří místo oproti odděleným sloupcům adresy + baru. Zvážit alternativní layout: adresa vlevo, bar od středu do konce řádku.
+- **Celkový scale nahoře přes celou obrazovku** – iftop má scale axis od 0 do peaku roztaženou přes celý terminál. Aktuálně je scale jen nad barovou sekcí (2*aw+5 px od levého okraje). Zvážit fullwidth scale header.
+- **Patička s bary pro totals** – iftop zobrazuje TX/RX/TOTAL v patičce včetně minibaru. Aktuálně máme jen čísla. Přidat vizualizaci.
+- **Paralelní monitoring interface pro total** – aktuálně total = součet viditelných toků. iftop monitoruje celý iface paralelně → přesnější celkový throughput. Alternativa: samostatný `/tool/torch` bez filtrů pro aggregate data.
+
+### Nový režim zobrazení (port-based)
+- **Řadit/seskupovat podle cílového portu** – iftop má mód, kde `<=` je oddělovač a řádky jsou seskupeny podle destinačního portu. Umožňuje vidět např. celkový HTTPS traffic najednou. Zvážit jako další `SortMode` nebo samostatný `GroupMode`.
+
+---
+
 ## Náměty / nápady (neimplementováno)
 
 - **Relativní bary** – aktuálně se každý bar škáluje na globální `PeakTotal`. Alternativa: každé připojení má vlastní peak, bar vždy dobře využívá šířku. Riziko: ztráta vzájemného srovnání velikostí provozů.
