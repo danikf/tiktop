@@ -19,6 +19,8 @@ namespace tiktop
         // Profile actions (not part of the connection itself)
         public string? ProfileName { get; private set; }
         public string? SaveAs      { get; private set; }
+        /// <summary>When true, the connection is NOT auto-saved to the _last profile.</summary>
+        public bool    NoSave      { get; private set; }
 
         public int ResolvedPort => Port ?? (UseSsl ? 8729 : 8728);
 
@@ -66,6 +68,10 @@ namespace tiktop
                         break;
                     case "--save-as":
                         cfg.SaveAs = NextArg(args, ref i, "--save-as");
+                        break;
+                    case "--no-save":
+                    case "--private":
+                        cfg.NoSave = true;
                         break;
                     case "--list-profiles":
                         ListProfiles(profiles);
@@ -303,6 +309,7 @@ namespace tiktop
             Console.WriteLine("      --save-as <name>      Save current params as a named profile");
             Console.WriteLine("      --list-profiles       List all saved profiles and exit");
             Console.WriteLine("      --delete-profile <n>  Delete a saved profile and exit");
+            Console.WriteLine("      --no-save             Do not auto-save connection as _last profile");
             Console.WriteLine();
             Console.WriteLine("  -h, --help                Show this help and exit");
             Console.WriteLine();
