@@ -31,7 +31,7 @@ namespace tiktop.Data
             //System.Diagnostics.Debug.Assert(!_isFinalized, "Souctova radka se ocekava jako posledni");
             var key = ConstructKey(srcAddress, srcPort, dstAddress, dstPort);
 
-            DataStackSectionIp ipItem;
+            DataStackSectionIp? ipItem;
             if (!_ipItems.TryGetValue(key, out ipItem))
             {
                 ipItem = new DataStackSectionIp(srcAddress, srcPort, dstAddress, dstPort, rx, tx);
@@ -70,7 +70,7 @@ namespace tiktop.Data
         {
             var key = ConstructKey(ip.SrcAddress, ip.SrcPort, ip.DstAddress, ip.DstPort);
 
-            DataStackSectionIp result;
+            DataStackSectionIp? result;
             if (!_ipItems.TryGetValue(key, out result))
                 result = new DataStackSectionIp(ip.SrcAddress, ip.SrcPort, ip.DstAddress, ip.DstPort, 0, 0);
 

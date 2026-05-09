@@ -12,7 +12,7 @@ namespace tiktop
     public class MikrotikWrapper: IDisposable
     {
         ITikConnection _connection;
-        ITikCommand _torchCmd;
+        ITikCommand? _torchCmd;
 
         public MikrotikWrapper(string host, string user, string pass, bool useSsl = true, int port = 8729)
         {

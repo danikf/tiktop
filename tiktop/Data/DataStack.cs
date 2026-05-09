@@ -65,7 +65,7 @@ namespace tiktop.Data
 
         private void AddTotalTraffic(long section, long tx, long rx)
         {
-            DataStackSection item;
+            DataStackSection? item;
             if (!_itemsPerSection.TryGetValue(section, out item))
             {
                 item = new DataStackSection(section);
@@ -83,7 +83,7 @@ namespace tiktop.Data
 
         private void AddIpTraffic(long section, string srcAddress, string srcPort, string dstAddress, string dstPort, long tx, long rx)
         {
-            DataStackSection item;
+            DataStackSection? item;
             if (!_itemsPerSection.TryGetValue(section, out item))
             {
                 item = new DataStackSection(section);
@@ -98,7 +98,7 @@ namespace tiktop.Data
             const int mediumWindowCnt = 10;
             const int longWindowCnt = 40;
 
-            DataStackSection lastFinalizedSection = null;
+            DataStackSection? lastFinalizedSection = null;
             DataStackSection[] items;
             lock (_lockObj)
             {
