@@ -9,7 +9,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="tik4net" Version="3.5.0" />
+    <ProjectReference Include="..\..\..\tik4net\tik4net\tik4net\tik4net.csproj" />
+    <ProjectReference Include="..\..\..\tik4net\tik4net\tik4net.objects\tik4net.objects.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="DnsClient" Version="1.8.0" />
   </ItemGroup>
 
 </Project>

@@ -1,139 +1,257 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Diagnostics;
+using System;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading.Tasks;
 using tiktop.Data;
 using tiktop.Helpers;
 
 namespace tiktop
-{ 
+{
     class Visualiser : IDisposable
     {
-        //// https://social.msdn.microsoft.com/Forums/vstudio/en-US/8478fa4e-ee5d-400c-81f8-63691896e224/drawing-on-console?forum=csharpgeneral
-        //[DllImport("user32.dll", CharSet = CharSet.Auto)]
-        //public static extern IntPtr GetDC(IntPtr hWnd);
-
         const int headerHeight = 2;
-        const int footerHeight = 4 + 1 /*Nejde psat na posledni radek*/;
-        //const int itemsHeight = 25 - headerHeight - footerHeight;
+        const int footerHeight = 4 + 1; // separator + TX + RX + TOTAL + last-line guard
 
-        private object lockObj = new object();
-        private volatile bool isDisposed = false;
-        //private Graphics graphics;
-        //private BufferedGraphics bufferedGraphics;
+        private readonly DnsCache _dnsCache;
+        private readonly object _lockObj = new object();
+        private volatile bool _isDisposed = false;
 
-        private ConsoleColor backgroudColor;
-        private ConsoleColor foregroundColor;
+        private string _statusMessage = "Connected";
+        private ConsoleColor _statusColor = ConsoleColor.Green;
 
-        public int NrOfItems => (Console.WindowHeight - headerHeight - footerHeight) / 2;
+        public int NrOfItems => Math.Max(0, (Console.WindowHeight - headerHeight - footerHeight) / 2);
 
-        public Visualiser()
+        public void SetStatus(string message, ConsoleColor color = ConsoleColor.Red)
         {
-            Console.CursorVisible = false;
-            backgroudColor = Console.BackgroundColor;
-            foregroundColor = Console.ForegroundColor;
+            lock (_lockObj)
+            {
+                _statusMessage = message;
+                _statusColor = color;
+            }
+        }
 
-            ////alocate console buffer
-            //Process process = Process.GetCurrentProcess();
-            //graphics = Graphics.FromHdc(GetDC(process.MainWindowHandle));
-            //BufferedGraphicsContext context = BufferedGraphicsManager.Current;
-            //context.MaximumBuffer = new Size(Console.WindowWidth, Console.WindowHeight);
-            //bufferedGraphics = context.Allocate(graphics, new Rectangle(0, 0, 320, 200));
+        public Visualiser(DnsCache dnsCache)
+        {
+            _dnsCache = dnsCache;
+            Console.CursorVisible = false;
         }
 
         public void Draw(DataSnapshot data)
         {
-            lock (lockObj)
+            lock (_lockObj)
             {
-                if (!isDisposed)
+                if (_isDisposed) return;
+
+                var (addrWidth, barWidth) = ComputeLayout();
+                var savedColor = Console.ForegroundColor;
+                try
                 {
-                    //https://en.wikipedia.org/wiki/Box-drawing_character
-                    //header
                     Console.SetCursorPosition(0, 0);
-                    DrawHeader(data);
+                    DrawHeader(data, addrWidth, barWidth);
 
-                    //items
                     Console.SetCursorPosition(0, headerHeight);
-                    int itemsHeight = Console.WindowHeight - headerHeight - footerHeight;
-                    DrawItems(data, itemsHeight / 2);
+                    int itemLines = Console.WindowHeight - headerHeight - footerHeight;
+                    DrawItems(data, itemLines / 2, addrWidth, barWidth);
 
-                    //footer
                     Console.SetCursorPosition(0, Console.WindowHeight - footerHeight);
-                    DrawFooter(data);
+                    DrawFooter(data, addrWidth, barWidth);
+                }
+                finally
+                {
+                    Console.ForegroundColor = savedColor;
                 }
             }
         }
 
-        //const string line15 = "───────────────";
-
-        private void DrawHeader(DataSnapshot data)
+        // Layout: {local:<aw>} => {remote:<aw>} {bar:<bw>} {avg2s} {avg10s} {avg40s}
+        // Width:   aw + 4 + aw + 1 + bw + 1 + 6+2+6+2+6 = 2*aw + bw + 28
+        private (int addrWidth, int barWidth) ComputeLayout()
         {
-            double nr = data.PeakTotal / 5;
-            string nr1 = FormatHelper.FormatTraffic((int)nr, true);
-            string nr2 = FormatHelper.FormatTraffic((int)nr * 2, true);
-            string nr3 = FormatHelper.FormatTraffic((int)nr * 3, true);
-            string nr4 = FormatHelper.FormatTraffic((int)nr * 4, true);
-            string nr5 = FormatHelper.FormatTraffic((int)nr * 5, true);
-
-            WriteRow($"                { nr1}          { nr2}          { nr3}          { nr4}    { nr5}");
-            WriteRow($"└───────────────┴───────────────┴───────────────┴───────────────┴───────────────");            
+            int W = Console.WindowWidth;
+            int barWidth = Math.Max(10, Math.Min(40, (W - 28) / 3));
+            int addrWidth = Math.Max(10, (W - barWidth - 28) / 2);
+            return (addrWidth, barWidth);
         }
 
-        private void DrawItems(DataSnapshot data, int cnt)
+        private void DrawHeader(DataSnapshot data, int addrWidth, int barWidth)
         {
-            foreach(var ip in data.TopIpTraffic.Take(cnt))
+            int W = Console.WindowWidth;
+            int barStart = 2 * addrWidth + 5; // column where bar begins
+            long peak = data.PeakTotal;
+            double step = peak / 5.0;
+
+            // Line 1: scale labels right-aligned at 20% / 40% / 60% / 80% / 100% of bar
+            char[] labelLine = new string(' ', W).ToCharArray();
+            for (int i = 1; i <= 5; i++)
             {
-                WriteRow($"{ip.LastSection.SrcAddress.SafePrefix(29).PadRight(29)} => {ip.LastSection.DstAddress.SafePrefix(29).PadRight(29)}   {Frm3Nrs(new double[] { 1, 2, 3 })}");
-                WriteRow($"                              <= {ip.LastSection.DstAddress.SafePrefix(29).PadRight(29)}   {Frm3Nrs(new double[] { 1, 2, 3 })}");
+                string label = FormatHelper.FormatTraffic((long)(step * i)).TrimStart();
+                int tickCol = barStart + (int)Math.Round(barWidth * i / 5.0) - 1;
+                int start = tickCol - label.Length + 1;
+                for (int j = 0; j < label.Length; j++)
+                {
+                    int c = start + j;
+                    if (c >= 0 && c < W)
+                        labelLine[c] = label[j];
+                }
+            }
+            WriteRow(new string(labelLine));
+
+            // Line 2: └────┴────┴────┴────┴
+            char[] sep = new string(' ', W).ToCharArray();
+            int anchorCol = barStart - 1;
+            if (anchorCol >= 0 && anchorCol < W) sep[anchorCol] = '└';
+            for (int i = barStart; i < barStart + barWidth && i < W; i++)
+                sep[i] = '─';
+            for (int i = 1; i <= 5; i++)
+            {
+                int tickCol = barStart + (int)Math.Round(barWidth * i / 5.0) - 1;
+                if (tickCol >= 0 && tickCol < W)
+                    sep[tickCol] = '┴';
+            }
+            WriteRow(new string(sep));
+        }
+
+        private void DrawItems(DataSnapshot data, int cnt, int addrWidth, int barWidth)
+        {
+            long peak = data.PeakTotal;
+            int drawn = 0;
+
+            foreach (var ip in data.TopIpTraffic.Take(cnt))
+            {
+                string local  = FormatHelper.ShortenHostname(
+                    _dnsCache.TryGet(ip.LastSection.SrcAddress) ?? ip.LastSection.SrcAddress, addrWidth);
+                string remote = FormatHelper.ShortenHostname(
+                    _dnsCache.TryGet(ip.LastSection.DstAddress) ?? ip.LastSection.DstAddress, addrWidth);
+
+                long txShort  = (long)ip.ShortRange.Average(s => (double)s.Tx);
+                long txMedium = (long)ip.MediumRange.Average(s => (double)s.Tx);
+                long txLong   = (long)ip.LongRange.Average(s => (double)s.Tx);
+                long rxShort  = (long)ip.ShortRange.Average(s => (double)s.Rx);
+                long rxMedium = (long)ip.MediumRange.Average(s => (double)s.Rx);
+                long rxLong   = (long)ip.LongRange.Average(s => (double)s.Rx);
+
+                string txPrefix = $"{local.PadRight(addrWidth)} => {remote.PadRight(addrWidth)} ";
+                string rxPrefix = $"{"".PadRight(addrWidth)} <= {"".PadRight(addrWidth)} ";
+                string txSuffix = $" {FormatHelper.FormatTraffic(txShort)}  {FormatHelper.FormatTraffic(txMedium)}  {FormatHelper.FormatTraffic(txLong)}";
+                string rxSuffix = $" {FormatHelper.FormatTraffic(rxShort)}  {FormatHelper.FormatTraffic(rxMedium)}  {FormatHelper.FormatTraffic(rxLong)}";
+
+                DrawItemRow(txPrefix, RenderBar(ip.LastSection.Tx, peak, barWidth), ConsoleColor.Green, txSuffix);
+                DrawItemRow(rxPrefix, RenderBar(ip.LastSection.Rx, peak, barWidth), ConsoleColor.Cyan,  rxSuffix);
+                drawn++;
+            }
+
+            // Clear leftover rows from previous renders
+            for (int i = drawn; i < cnt; i++)
+            {
+                WriteRow("");
+                WriteRow("");
             }
         }
 
-        private void DrawFooter(DataSnapshot data)
+        // Renders a proportional bar using Unicode block characters for sub-char precision.
+        // Full: █   Partial: ▉▊▋▌▍▎▏   Empty: ░
+        private static string RenderBar(long value, long peak, int width)
         {
-            string tx = FormatHelper.FormatTraffic(data.ActualTx);
-            string rx = FormatHelper.FormatTraffic(data.ActualRx);
-            string tot = FormatHelper.FormatTraffic(data.ActualTx + data.ActualRx);
-            string pTx = FormatHelper.FormatTraffic(data.PeakTx);
-            string pRx = FormatHelper.FormatTraffic(data.PeakRx);
-            string pTt = FormatHelper.FormatTraffic(data.PeakTotal);
+            if (width <= 0) return "";
+            if (peak <= 0) return new string('░', width);
 
-            WriteRow($"────────────────────────────────────────────────────────────────────────────────");
-            WriteRow($"TX:                   {  tx}  peak: { pTx}        rates:  {Frm3Nrs(data.TxAvgs)}");
-            WriteRow($"RX:                   {  rx}        { pRx}                {Frm3Nrs(data.RxAvgs)}");
-            WriteRow($"TOTAL:                { tot}        { pTt}                {Frm3Nrs(data.TotalAvgs)}");
-            //                                                                    { nr1}  { nr2}  { nr3}
+            double ratio = Math.Min(1.0, (double)value / peak);
+            double filled = ratio * width * 8; // in eighths of a character
+            int fullBlocks = (int)(filled / 8);
+            int partial = (int)(filled % 8);
+            char[] partialChars = { '\0', '▏', '▎', '▍', '▌', '▋', '▊', '▉' };
+
+            var sb = new StringBuilder(width);
+            sb.Append('█', fullBlocks);
+            if (partial > 0 && fullBlocks < width)
+                sb.Append(partialChars[partial]);
+            int used = fullBlocks + (partial > 0 ? 1 : 0);
+            sb.Append('░', Math.Max(0, width - used));
+            return sb.ToString();
         }
 
-        private string Frm3Nrs(double[] items)
+        private void DrawItemRow(string prefix, string bar, ConsoleColor barColor, string suffix)
         {
-            string nr1 = FormatHelper.FormatTraffic((long)items[0]);
-            string nr2 = FormatHelper.FormatTraffic((long)items[1]);
-            string nr3 = FormatHelper.FormatTraffic((long)items[2]);
+            if (Console.CursorTop >= Console.WindowHeight - 1) return;
+            int W = Console.WindowWidth;
 
-            return $"{ nr1}  { nr2}  { nr3}";
+            var p = prefix.SafePrefix(W);
+            Console.Write(p);
+            int col = p.Length;
+
+            if (col < W)
+            {
+                var b = bar.SafePrefix(W - col);
+                Console.ForegroundColor = barColor;
+                Console.Write(b);
+                Console.ForegroundColor = ConsoleColor.Gray;
+                col += b.Length;
+            }
+
+            if (col < W)
+                Console.Write(suffix.SafePrefix(W - col).PadRight(W - col));
+        }
+
+        private void DrawFooter(DataSnapshot data, int addrWidth, int barWidth)
+        {
+            int W = Console.WindowWidth;
+
+            // Separator with status badge on the right
+            string badge;
+            ConsoleColor badgeColor;
+            lock (_lockObj)
+            {
+                badge = $"[ {_statusMessage} ]";
+                badgeColor = _statusColor;
+            }
+            badge = badge.SafePrefix(W - 4);
+            string sepLeft = new string('─', Math.Max(0, W - badge.Length));
+            if (Console.CursorTop < Console.WindowHeight - 1)
+            {
+                Console.Write(sepLeft.SafePrefix(Console.WindowWidth));
+                int col = sepLeft.Length;
+                if (col < W)
+                {
+                    Console.ForegroundColor = badgeColor;
+                    Console.Write(badge.SafePrefix(W - col));
+                    Console.ForegroundColor = ConsoleColor.Gray;
+                }
+            }
+
+            // "rates:" label starts where the bar starts, to align with item numbers
+            int ratesCol = 2 * addrWidth + 5 + barWidth + 1;
+
+            string[] labels  = { "TX:", "RX:", "TOTAL:" };
+            long[]   actuals = { data.ActualTx, data.ActualRx, data.ActualTx + data.ActualRx };
+            long[]   peaks   = { data.PeakTx,   data.PeakRx,   data.PeakTotal };
+            double[][] avgs  = { data.TxAvgs,   data.RxAvgs,   data.TotalAvgs };
+
+            for (int i = 0; i < 3; i++)
+            {
+                string cur  = FormatHelper.FormatTraffic(actuals[i]);
+                string peak = FormatHelper.FormatTraffic(peaks[i]);
+                string a0   = FormatHelper.FormatTraffic((long)avgs[i][0]);
+                string a1   = FormatHelper.FormatTraffic((long)avgs[i][1]);
+                string a2   = FormatHelper.FormatTraffic((long)avgs[i][2]);
+
+                string left  = $"{labels[i]}  cur:{cur}   peak:{peak}";
+                string rates = $"{a0}  {a1}  {a2}";
+                WriteRow($"{left.PadRight(ratesCol)}{rates}");
+            }
         }
 
         private void WriteRow(string str)
         {
             str = str.SafePrefix(Console.WindowWidth).PadRight(Console.WindowWidth);
-
             if (Console.CursorTop < Console.WindowHeight - 1)
                 Console.Write(str);
-            else
-                ; //skip
         }
 
         public void Dispose()
         {
-            lock (lockObj)
+            lock (_lockObj)
             {
-                //bufferedGraphics.Dispose();
-                //graphics.Dispose();
                 Console.CursorVisible = true;
-                isDisposed = true;
+                _isDisposed = true;
             }
         }
     }
