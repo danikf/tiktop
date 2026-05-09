@@ -52,6 +52,48 @@ namespace tiktop.Helpers
             return name[..maxLen];
         }
 
+        /// <summary>
+        /// Returns ":servicename" for well-known ports, or ":portnumber" for others.
+        /// Returns "" for port "0" or empty.
+        /// </summary>
+        public static string FormatPort(string port)
+        {
+            if (string.IsNullOrEmpty(port) || port == "0") return "";
+            string name = port switch
+            {
+                "20"   => "ftp-data",
+                "21"   => "ftp",
+                "22"   => "ssh",
+                "23"   => "telnet",
+                "25"   => "smtp",
+                "53"   => "dns",
+                "67"   => "dhcp",
+                "80"   => "http",
+                "110"  => "pop3",
+                "123"  => "ntp",
+                "143"  => "imap",
+                "179"  => "bgp",
+                "389"  => "ldap",
+                "443"  => "https",
+                "465"  => "smtps",
+                "500"  => "ike",
+                "587"  => "submission",
+                "636"  => "ldaps",
+                "993"  => "imaps",
+                "995"  => "pop3s",
+                "1194" => "ovpn",
+                "1723" => "pptp",
+                "3306" => "mysql",
+                "3389" => "rdp",
+                "5060" => "sip",
+                "5432" => "pgsql",
+                "8080" => "http-alt",
+                "8443" => "https-alt",
+                _      => port,
+            };
+            return ":" + name;
+        }
+
         public static string SafePrefix(this string str, int length)
         {
             if (string.IsNullOrEmpty(str))

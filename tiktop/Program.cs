@@ -72,7 +72,14 @@ namespace tiktop
                     {
                         string sort = stack.SortMode.ToString();
                         string dns  = visualiser.ShowDns ? "DNS:on" : "DNS:off";
-                        visualiser.SetStatus($"sort:{sort} | {dns} | q:quit p:sort r:reset d:dns ±:rows", ConsoleColor.Green);
+                        string disp = visualiser.DisplayMode switch {
+                            DisplayMode.TxOnly => " | TX-only",
+                            DisplayMode.RxOnly => " | RX-only",
+                            _                  => ""
+                        };
+                        visualiser.SetStatus(
+                            $"sort:{sort} | {dns}{disp} | q:quit p:sort r:reset d:dns t:TX/RX ±:rows",
+                            ConsoleColor.Green);
                     }
 
                     UpdateStatus();
@@ -105,6 +112,11 @@ namespace tiktop
 
                             case ConsoleKey.D:
                                 visualiser.ToggleDns();
+                                UpdateStatus();
+                                break;
+
+                            case ConsoleKey.T:
+                                visualiser.CycleDisplayMode();
                                 UpdateStatus();
                                 break;
 

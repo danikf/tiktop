@@ -135,6 +135,7 @@ Profiles are stored in:
 | `p` | Cycle sort order: **Total → TX → RX** |
 | `r` | Reset all peak values |
 | `d` | Toggle DNS hostname display on / off |
+| `t` | Cycle display mode: **Both → TX only → RX only** (doubles visible connections in single-direction modes) |
 | `+` | Show one more row |
 | `-` | Show one fewer row |
 
