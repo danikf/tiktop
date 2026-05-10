@@ -20,6 +20,10 @@ namespace tiktop.Data
         private long _txPeak;
         private long _rxPeak;
         private long _totalPeak;
+        private long _cumulativeTx;
+        private long _cumulativeRx;
+        private long _lastCumulativeSection = -1;
+        private Dictionary<string, (long tx, long rx)> _cumulativeIp = new Dictionary<string, (long, long)>();
 
         public SortMode      SortMode      { get; private set; } = SortMode.Total;
         public SortWindow    SortWindow    { get; private set; } = SortWindow.Short;
@@ -134,6 +138,22 @@ namespace tiktop.Data
                 _txPeak = Math.Max(_txPeak, lastFinalizedSection.TotalTx);
                 _rxPeak = Math.Max(_rxPeak, lastFinalizedSection.TotalRx);
                 _totalPeak = Math.Max(_totalPeak, lastFinalizedSection.TotalTx + lastFinalizedSection.TotalRx);
+
+                // Accumulate cumulative totals for newly finalized sections.
+                foreach (var section in _itemsPerSection.Values)
+                {
+                    if (!section.IsFinalized || section.SectionNr <= _lastCumulativeSection) continue;
+                    _cumulativeTx += section.TotalTx;
+                    _cumulativeRx += section.TotalRx;
+                    foreach (var ip in section.GetAllIps())
+                    {
+                        string k = $"{ip.SrcAddress}:{ip.SrcPort}-{ip.DstAddress}:{ip.DstPort}";
+                        _cumulativeIp[k] = _cumulativeIp.TryGetValue(k, out var c)
+                            ? (c.tx + ip.Tx, c.rx + ip.Rx)
+                            : (ip.Tx, ip.Rx);
+                    }
+                    _lastCumulativeSection = Math.Max(_lastCumulativeSection, section.SectionNr);
+                }
             }
 
             items = items.OrderBy(iPair => iPair.SectionNr).ToArray(); //sort after lock
@@ -173,10 +193,12 @@ namespace tiktop.Data
                 topIpTraffic = sortedAgg.Select(aggIp =>
                 {
                     string addr = bySrc ? aggIp.SrcAddress : aggIp.DstAddress;
+                    var (cTx, cRx) = bySrc ? GetCumulativeBySrc(addr) : GetCumulativeByDst(addr);
                     return new DataSnapshotIpRow(aggIp,
                         shortWindow .Select(s => bySrc ? s.GetAggregatedBySrc(addr) : s.GetAggregatedByDst(addr)).ToArray(),
                         mediumWindow.Select(s => bySrc ? s.GetAggregatedBySrc(addr) : s.GetAggregatedByDst(addr)).ToArray(),
-                        longWindow  .Select(s => bySrc ? s.GetAggregatedBySrc(addr) : s.GetAggregatedByDst(addr)).ToArray()
+                        longWindow  .Select(s => bySrc ? s.GetAggregatedBySrc(addr) : s.GetAggregatedByDst(addr)).ToArray(),
+                        cTx, cRx
                     );
                 });
             }
@@ -189,11 +211,16 @@ namespace tiktop.Data
                     _                 => lastFinalizedSection.GetTopIps(nrOfItems, SortMode),
                 };
                 topIpTraffic = sortedIps.Select(i =>
-                    new DataSnapshotIpRow(i,
+                {
+                    string k = $"{i.SrcAddress}:{i.SrcPort}-{i.DstAddress}:{i.DstPort}";
+                    var (cTx, cRx) = _cumulativeIp.TryGetValue(k, out var c) ? c : (0L, 0L);
+                    return new DataSnapshotIpRow(i,
                         shortWindow .Select(ii => ii.GetIpTraffic(i)).ToArray(),
                         mediumWindow.Select(ii => ii.GetIpTraffic(i)).ToArray(),
-                        longWindow  .Select(ii => ii.GetIpTraffic(i)).ToArray()
-                    ));
+                        longWindow  .Select(ii => ii.GetIpTraffic(i)).ToArray(),
+                        cTx, cRx
+                    );
+                });
             }
 
             static double SafeAvg(DataStackSection[] w, Func<DataStackSection, double> fn) =>
@@ -204,6 +231,7 @@ namespace tiktop.Data
             return new DataSnapshot(
                 lastFinalizedSection.TotalTx, lastFinalizedSection.TotalRx,
                 _txPeak, _rxPeak, _totalPeak,
+                _cumulativeTx, _cumulativeRx,
                 new double[] { SafeAvg(shortWindow, i => i.TotalTx), SafeMax(mediumWindow, i => i.TotalTx), SafeMax(longWindow, i => i.TotalTx) },
                 new double[] { SafeAvg(shortWindow, i => i.TotalRx), SafeMax(mediumWindow, i => i.TotalRx), SafeMax(longWindow, i => i.TotalRx) },
                 new double[] { SafeAvg(shortWindow, i => i.TotalTx + i.TotalRx), SafeMax(mediumWindow, i => i.TotalTx + i.TotalRx), SafeMax(longWindow, i => i.TotalTx + i.TotalRx) },
@@ -227,6 +255,23 @@ namespace tiktop.Data
                 _            => ip => window.Average(s => (double)s.GetIpTraffic(ip).Total),
             };
             return candidates.OrderByDescending(avgFn).Take(take).ToArray();
+        }
+
+        private (long tx, long rx) GetCumulativeBySrc(string srcAddress)
+        {
+            long tx = 0, rx = 0;
+            foreach (var (k, v) in _cumulativeIp)
+                if (k.StartsWith(srcAddress + ":")) { tx += v.tx; rx += v.rx; }
+            return (tx, rx);
+        }
+
+        private (long tx, long rx) GetCumulativeByDst(string dstAddress)
+        {
+            string match = "-" + dstAddress + ":";
+            long tx = 0, rx = 0;
+            foreach (var (k, v) in _cumulativeIp)
+                if (k.Contains(match)) { tx += v.tx; rx += v.rx; }
+            return (tx, rx);
         }
 
         private static DataStackSectionIp[] SortAggIps(

@@ -183,15 +183,15 @@ namespace tiktop
 
         // ── Layout ────────────────────────────────────────────────────────────
 
-        // Row: {local:<aw>} => {remote+port:<aw>} {bar:<bw>} {avg2s} {avg10s} {avg40s}
-        // Width: aw + 4 + aw + 1 + bw + 1 + (6+2+6+2+6) = 2*aw + bw + 28
+        // Row: {local:<aw>} => {remote+port:<aw>} {bar:<bw>} {avg2s} {avg10s} {avg40s} {cumul}
+        // Width: aw + 4 + aw + 1 + bw + (1+6+2+6+2+6+2+6) = 2*aw + bw + 36
         private (int aw, int bw) ComputeLayout()
         {
             int W = _bufW;
             // Address columns: 1/4 of space each, capped at 35 — bars take the rest.
-            // Formula guarantees 2*aw + bw + 28 == W (exact, no drift).
-            int aw = Math.Max(10, Math.Min(35, (W - 28) / 4));
-            int bw = Math.Max(10, W - 2 * aw - 28);
+            // Formula guarantees 2*aw + bw + 36 == W (exact, no drift).
+            int aw = Math.Max(10, Math.Min(35, (W - 36) / 4));
+            int bw = Math.Max(10, W - 2 * aw - 36);
             return (aw, bw);
         }
 
@@ -307,8 +307,8 @@ namespace tiktop
                 // Prefix is exactly 2*aw+5 chars so columns always align.
                 string txPfx = $"{local.PadRight(aw)} => {remote.PadRight(aw)} ";
                 string rxPfx = $"{"".PadRight(aw)} <= {"".PadRight(aw)} ";
-                string txSfx = Sfx(txS, txM, txL);
-                string rxSfx = Sfx(rxS, rxM, rxL);
+                string txSfx = Sfx(txS, txM, txL, ip.CumulativeTx);
+                string rxSfx = Sfx(rxS, rxM, rxL, ip.CumulativeRx);
 
                 if (_displayMode != DisplayMode.RxOnly)
                 {
@@ -331,8 +331,8 @@ namespace tiktop
             while (row < end) PlainRow(row++, "");
         }
 
-        private string Sfx(long a, long b, long c) =>
-            $" {FormatHelper.FormatTraffic(a, _bitsMode)}  {FormatHelper.FormatTraffic(b, _bitsMode)}  {FormatHelper.FormatTraffic(c, _bitsMode)}";
+        private string Sfx(long a, long b, long c, long cum) =>
+            $" {FormatHelper.FormatTraffic(a, _bitsMode)}  {FormatHelper.FormatTraffic(b, _bitsMode)}  {FormatHelper.FormatTraffic(c, _bitsMode)}  {FormatHelper.FormatTraffic(cum, _bitsMode)}";
 
         // ── Footer ────────────────────────────────────────────────────────────
 
@@ -366,17 +366,18 @@ namespace tiktop
             int ratesCol = 2 * aw + 5 + bw + 1;
 
             // TX (green) / RX (cyan) / TOTAL (default)
-            ConsoleColor[] colors = { ConsoleColor.Green, ConsoleColor.Cyan, ConsoleColor.Gray };
-            string[]   lbls    = { "TX:", "RX:", "TOTAL:" };
-            long[]     actuals = { data.ActualTx, data.ActualRx, data.ActualTx + data.ActualRx };
-            long[]     peaks   = { data.PeakTx,   data.PeakRx,   data.PeakTotal };
-            double[][] avgs    = { data.TxAvgs,   data.RxAvgs,   data.TotalAvgs };
+            ConsoleColor[] colors    = { ConsoleColor.Green, ConsoleColor.Cyan, ConsoleColor.Gray };
+            string[]   lbls          = { "TX:", "RX:", "TOTAL:" };
+            long[]     actuals       = { data.ActualTx, data.ActualRx, data.ActualTx + data.ActualRx };
+            long[]     peaks         = { data.PeakTx,   data.PeakRx,   data.PeakTotal };
+            double[][] avgs          = { data.TxAvgs,   data.RxAvgs,   data.TotalAvgs };
+            long[]     cumulatives   = { data.CumulativeTx, data.CumulativeRx, data.CumulativeTotal };
 
             const int miniBarW = 16;
             for (int i = 0; i < 3; i++)
             {
                 string left  = $"{lbls[i]}  cur:{FormatHelper.FormatTraffic(actuals[i], _bitsMode)}   peak:{FormatHelper.FormatTraffic(peaks[i], _bitsMode)}";
-                string rates = $"{FormatHelper.FormatTraffic((long)avgs[i][0], _bitsMode)}  {FormatHelper.FormatTraffic((long)avgs[i][1], _bitsMode)}  {FormatHelper.FormatTraffic((long)avgs[i][2], _bitsMode)}";
+                string rates = $"{FormatHelper.FormatTraffic((long)avgs[i][0], _bitsMode)}  {FormatHelper.FormatTraffic((long)avgs[i][1], _bitsMode)}  {FormatHelper.FormatTraffic((long)avgs[i][2], _bitsMode)}  {FormatHelper.FormatTraffic(cumulatives[i], _bitsMode)}";
                 if (_showBars)
                 {
                     string prefix  = (left + "  ").PadRight(ratesCol - miniBarW);
