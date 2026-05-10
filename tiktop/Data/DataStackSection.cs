@@ -66,6 +66,8 @@ namespace tiktop.Data
             return _ipItems.Values.OrderByDescending(key).Take(nrOfItems);
         }
 
+        internal IEnumerable<DataStackSectionIp> GetAllIps() => _ipItems.Values;
+
         internal DataStackSectionIp GetIpTraffic(DataStackSectionIp ip)
         {
             var key = ConstructKey(ip.SrcAddress, ip.SrcPort, ip.DstAddress, ip.DstPort);

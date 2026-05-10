@@ -71,20 +71,30 @@ namespace tiktop
 
                     void UpdateStatus()
                     {
-                        string sort    = stack.SortMode.ToString();
+                        string winLabel = stack.SortWindow switch {
+                            SortWindow.Medium => "/10s",
+                            SortWindow.Long   => "/40s",
+                            _                 => "",
+                        };
+                        string sort    = stack.SortMode.ToString() + winLabel;
                         string resolve = visualiser.ResolveMode switch {
                             ResolveMode.DnsService => "dns+svc",
                             ResolveMode.IpPort     => "ip+port",
                             ResolveMode.IpService  => "ip+svc",
                             _                      => "?"
                         };
-                        string disp = visualiser.DisplayMode switch {
+                        string disp    = visualiser.DisplayMode switch {
                             DisplayMode.TxOnly => " | TX-only",
                             DisplayMode.RxOnly => " | RX-only",
                             _                  => ""
                         };
+                        string scale   = visualiser.LogScale    ? " | log"    : "";
+                        string bars    = visualiser.ShowBars    ? ""          : " | no-bars";
+                        string bits    = visualiser.BitsMode    ? " | bits"   : "";
+                        string freeze  = visualiser.FreezeOrder ? " | frozen" : "";
+                        string pause   = visualiser.Paused      ? " | PAUSED" : "";
                         visualiser.SetStatus(
-                            $"sort:{sort} | {resolve}{disp} | q:quit p:sort r:reset d:addr t:TX/RX ±:rows",
+                            $"sort:{sort} | {resolve}{disp}{scale}{bars}{bits}{freeze}{pause} | q p 1-3 r d t b B L o f ±",
                             ConsoleColor.Green);
                     }
 
@@ -134,6 +144,48 @@ namespace tiktop
                             case ConsoleKey.Subtract:
                             case ConsoleKey.OemMinus:
                                 visualiser.AdjustRowCount(-1);
+                                break;
+
+                            case ConsoleKey.B:
+                                if ((key.Modifiers & ConsoleModifiers.Shift) != 0)
+                                    visualiser.ToggleBitsMode();  // B = bits/bytes
+                                else
+                                    visualiser.ToggleBars();      // b = bar graph
+                                UpdateStatus();
+                                break;
+
+                            case ConsoleKey.L:
+                                visualiser.ToggleLogScale();
+                                UpdateStatus();
+                                break;
+
+                            case ConsoleKey.D1:
+                            case ConsoleKey.NumPad1:
+                                stack.SetSortWindow(SortWindow.Short);
+                                UpdateStatus();
+                                break;
+
+                            case ConsoleKey.D2:
+                            case ConsoleKey.NumPad2:
+                                stack.SetSortWindow(SortWindow.Medium);
+                                UpdateStatus();
+                                break;
+
+                            case ConsoleKey.D3:
+                            case ConsoleKey.NumPad3:
+                                stack.SetSortWindow(SortWindow.Long);
+                                UpdateStatus();
+                                break;
+
+                            case ConsoleKey.O:
+                                visualiser.ToggleFreezeOrder();
+                                UpdateStatus();
+                                break;
+
+                            case ConsoleKey.F:
+                            case ConsoleKey.Spacebar:
+                                visualiser.TogglePause();
+                                UpdateStatus();
                                 break;
                         }
                     }
