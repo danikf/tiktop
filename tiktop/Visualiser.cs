@@ -35,6 +35,13 @@ namespace tiktop
         private ResolveMode _resolveMode = ResolveMode.DnsService;
         private int? _countOverride;
         private DisplayMode _displayMode = DisplayMode.Both;
+        private bool _logScale    = false;
+        private bool _showBars    = true;
+        private bool _paused      = false;
+        private bool _bitsMode    = false;
+        private bool _freezeOrder = false;
+        private string[]? _frozenOrder = null;
+        private DataSnapshot _lastSnapshot = new DataSnapshot(0, 0, 0);
 
         private int WindowH => _bufH > 0 ? _bufH : Console.WindowHeight;
         private int RowsPerItem => _displayMode == DisplayMode.Both ? 2 : 1;
@@ -42,8 +49,13 @@ namespace tiktop
         public int NrOfItems => _countOverride.HasValue
             ? Math.Min(_countOverride.Value, NrOfItemsAuto)
             : NrOfItemsAuto;
-        public ResolveMode ResolveMode => _resolveMode;
-        public DisplayMode DisplayMode => _displayMode;
+        public ResolveMode ResolveMode  => _resolveMode;
+        public DisplayMode DisplayMode  => _displayMode;
+        public bool LogScale    => _logScale;
+        public bool ShowBars    => _showBars;
+        public bool Paused      => _paused;
+        public bool BitsMode    => _bitsMode;
+        public bool FreezeOrder => _freezeOrder;
 
         public Visualiser(DnsCache dnsCache)
         {
@@ -77,6 +89,20 @@ namespace tiktop
             }
         }
 
+        public void ToggleLogScale()   { lock (_lockObj) _logScale    = !_logScale; }
+        public void ToggleBars()       { lock (_lockObj) _showBars    = !_showBars; }
+        public void TogglePause()      { lock (_lockObj) _paused      = !_paused; }
+        public void ToggleBitsMode()   { lock (_lockObj) _bitsMode    = !_bitsMode; }
+
+        public void ToggleFreezeOrder()
+        {
+            lock (_lockObj)
+            {
+                _freezeOrder = !_freezeOrder;
+                if (!_freezeOrder) _frozenOrder = null; // clear on unfreeze
+            }
+        }
+
         // ── Main draw ─────────────────────────────────────────────────────────
 
         public void Draw(DataSnapshot data)
@@ -98,13 +124,36 @@ namespace tiktop
                     _firstDraw = false;
                 }
 
+                // Paused: hold the last snapshot so data rows don't change;
+                // the status badge still re-renders each tick (dirty key changes).
+                DataSnapshot snap = _paused ? _lastSnapshot : data;
+                if (!_paused) _lastSnapshot = data;
+
+                // Apply freeze-order: capture order on first tick, then reorder by it.
+                DataSnapshotIpRow[] displayItems = snap.TopIpTraffic;
+                if (_freezeOrder)
+                {
+                    if (_frozenOrder == null)
+                    {
+                        _frozenOrder = displayItems.Select(GetRowKey).ToArray();
+                    }
+                    else
+                    {
+                        var byKey = displayItems.ToDictionary(GetRowKey);
+                        displayItems = _frozenOrder
+                            .Where(k => byKey.ContainsKey(k))
+                            .Select(k => byKey[k])
+                            .ToArray();
+                    }
+                }
+
                 var (aw, bw) = ComputeLayout();
                 var savedFg = Console.ForegroundColor;
                 try
                 {
-                    int row = DrawHeader(data, aw, bw, 0);
-                    DrawItems(data, NrOfItems, aw, bw, row);
-                    DrawFooter(data, aw, bw, _bufH - footerHeight);
+                    int row = DrawHeader(snap, aw, bw, 0);
+                    DrawItems(displayItems, snap.PeakTotal, NrOfItems, aw, bw, row);
+                    DrawFooter(snap, aw, bw, _bufH - footerHeight);
                 }
                 finally
                 {
@@ -113,6 +162,9 @@ namespace tiktop
             }
         }
 
+        private static string GetRowKey(DataSnapshotIpRow r) =>
+            $"{r.LastSection.SrcAddress}:{r.LastSection.SrcPort}-{r.LastSection.DstAddress}:{r.LastSection.DstPort}";
+
         // ── Layout ────────────────────────────────────────────────────────────
 
         // Row: {local:<aw>} => {remote+port:<aw>} {bar:<bw>} {avg2s} {avg10s} {avg40s}
@@ -120,8 +172,10 @@ namespace tiktop
         private (int aw, int bw) ComputeLayout()
         {
             int W = _bufW;
-            int bw = Math.Max(10, Math.Min(40, (W - 28) / 3));
-            int aw = Math.Max(10, (W - bw - 28) / 2);
+            // Address columns: 1/4 of space each, capped at 35 — bars take the rest.
+            // Formula guarantees 2*aw + bw + 28 == W (exact, no drift).
+            int aw = Math.Max(10, Math.Min(35, (W - 28) / 4));
+            int bw = Math.Max(10, W - 2 * aw - 28);
             return (aw, bw);
         }
 
@@ -138,7 +192,7 @@ namespace tiktop
             char[] labelLine = new string(' ', W).ToCharArray();
             for (int i = 1; i <= 5; i++)
             {
-                string label = FormatHelper.FormatTraffic((long)(step * i)).TrimStart();
+                string label = FormatHelper.FormatTraffic((long)(step * i), _bitsMode).TrimStart();
                 int tickCol = barStart + (int)Math.Round(bw * i / 5.0) - 1;
                 int s = tickCol - label.Length + 1;
                 for (int j = 0; j < label.Length; j++)
@@ -153,11 +207,9 @@ namespace tiktop
             }
             PlainRow(startRow, new string(labelLine));
 
-            // Row 1: └────┴────┴────┴────┴
-            char[] sep = new string(' ', W).ToCharArray();
-            int anchor = barStart - 1;
-            if (anchor >= 0 && anchor < W) sep[anchor] = '└';
-            for (int i = barStart; i < barStart + bw && i < W; i++) sep[i] = '─';
+            // Row 1: └── (full width) ──┴────┴────┴────┴────┴── (tick marks over bar)
+            char[] sep = new string('─', W).ToCharArray();
+            sep[0] = '└';
             for (int i = 1; i <= 5; i++)
             {
                 int tickCol = barStart + (int)Math.Round(bw * i / 5.0) - 1;
@@ -170,12 +222,11 @@ namespace tiktop
 
         // ── Items ─────────────────────────────────────────────────────────────
 
-        private void DrawItems(DataSnapshot data, int cnt, int aw, int bw, int startRow)
+        private void DrawItems(DataSnapshotIpRow[] items, long peak, int cnt, int aw, int bw, int startRow)
         {
-            long peak = data.PeakTotal;
             int row = startRow;
 
-            foreach (var ip in data.TopIpTraffic.Take(cnt))
+            foreach (var ip in items.Take(cnt))
             {
                 bool useDns     = _resolveMode == ResolveMode.DnsService;
                 bool useSvcName = _resolveMode != ResolveMode.IpPort;
@@ -208,9 +259,19 @@ namespace tiktop
                 string rxSfx = Sfx(rxS, rxM, rxL);
 
                 if (_displayMode != DisplayMode.RxOnly)
-                    ColoredRow(row++, txPfx, RenderBar(ip.LastSection.Tx, peak, bw), ConsoleColor.Green, txSfx);
+                {
+                    if (_showBars)
+                        ColoredRow(row++, txPfx, RenderBar(ip.LastSection.Tx, peak, bw, _logScale), ConsoleColor.Green, txSfx);
+                    else
+                        TintedRow(row++, txPfx + new string(' ', bw) + txSfx, ConsoleColor.Green);
+                }
                 if (_displayMode != DisplayMode.TxOnly)
-                    ColoredRow(row++, rxPfx, RenderBar(ip.LastSection.Rx, peak, bw), ConsoleColor.Cyan,  rxSfx);
+                {
+                    if (_showBars)
+                        ColoredRow(row++, rxPfx, RenderBar(ip.LastSection.Rx, peak, bw, _logScale), ConsoleColor.Cyan, rxSfx);
+                    else
+                        TintedRow(row++, rxPfx + new string(' ', bw) + rxSfx, ConsoleColor.Cyan);
+                }
             }
 
             // Clear leftover rows from previous renders
@@ -218,8 +279,8 @@ namespace tiktop
             while (row < end) PlainRow(row++, "");
         }
 
-        private static string Sfx(long a, long b, long c) =>
-            $" {FormatHelper.FormatTraffic(a)}  {FormatHelper.FormatTraffic(b)}  {FormatHelper.FormatTraffic(c)}";
+        private string Sfx(long a, long b, long c) =>
+            $" {FormatHelper.FormatTraffic(a, _bitsMode)}  {FormatHelper.FormatTraffic(b, _bitsMode)}  {FormatHelper.FormatTraffic(c, _bitsMode)}";
 
         // ── Footer ────────────────────────────────────────────────────────────
 
@@ -259,33 +320,35 @@ namespace tiktop
             long[]     peaks   = { data.PeakTx,   data.PeakRx,   data.PeakTotal };
             double[][] avgs    = { data.TxAvgs,   data.RxAvgs,   data.TotalAvgs };
 
+            const int miniBarW = 16;
             for (int i = 0; i < 3; i++)
             {
-                string left  = $"{lbls[i]}  cur:{FormatHelper.FormatTraffic(actuals[i])}   peak:{FormatHelper.FormatTraffic(peaks[i])}";
-                string rates = $"{FormatHelper.FormatTraffic((long)avgs[i][0])}  {FormatHelper.FormatTraffic((long)avgs[i][1])}  {FormatHelper.FormatTraffic((long)avgs[i][2])}";
-                TintedRow(row++, $"{left.PadRight(ratesCol)}{rates}", colors[i]);
+                string left  = $"{lbls[i]}  cur:{FormatHelper.FormatTraffic(actuals[i], _bitsMode)}   peak:{FormatHelper.FormatTraffic(peaks[i], _bitsMode)}";
+                string rates = $"{FormatHelper.FormatTraffic((long)avgs[i][0], _bitsMode)}  {FormatHelper.FormatTraffic((long)avgs[i][1], _bitsMode)}  {FormatHelper.FormatTraffic((long)avgs[i][2], _bitsMode)}";
+                if (_showBars)
+                {
+                    string prefix  = (left + "  ").PadRight(ratesCol - miniBarW);
+                    string miniBar = RenderBar(actuals[i], peaks[i], miniBarW, _logScale);
+                    ColoredRow(row++, prefix, miniBar, colors[i], rates);
+                }
+                else
+                {
+                    TintedRow(row++, $"{left.PadRight(ratesCol)}{rates}", colors[i]);
+                }
             }
         }
 
         // ── Bar renderer ──────────────────────────────────────────────────────
 
-        private static (int filled, int empty) BarSplit(long value, long peak, int width)
-        {
-            if (peak <= 0 || width <= 0) return (0, width);
-            double ratio  = Math.Min(1.0, (double)value / peak);
-            double filled = ratio * width * 8;
-            int fullBlocks = (int)(filled / 8);
-            int partial    = (int)(filled % 8);
-            int usedChars  = fullBlocks + (partial > 0 ? 1 : 0);
-            return (usedChars, Math.Max(0, width - usedChars));
-        }
-
-        private static string RenderBar(long value, long peak, int width)
+        private static string RenderBar(long value, long peak, int width, bool logScale = false)
         {
             if (width <= 0) return "";
             if (peak <= 0)  return new string('░', width);
 
-            double ratio     = Math.Min(1.0, (double)value / peak);
+            double ratio = logScale && value > 0
+                ? Math.Log(value + 1.0) / Math.Log(peak + 1.0)
+                : (double)value / peak;
+            ratio = Math.Min(1.0, ratio);
             double filled    = ratio * width * 8;
             int    fullBlocks = (int)(filled / 8);
             int    partial    = (int)(filled % 8);

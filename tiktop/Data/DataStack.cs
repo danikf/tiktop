@@ -6,7 +6,8 @@ using tik4net.Objects.Tool;
 
 namespace tiktop.Data
 {
-    public enum SortMode { Total, Tx, Rx }
+    public enum SortMode   { Total, Tx, Rx }
+    public enum SortWindow { Short, Medium, Long }
 
     public class DataStack
     {
@@ -19,7 +20,8 @@ namespace tiktop.Data
         private long _rxPeak;
         private long _totalPeak;
 
-        public SortMode SortMode { get; private set; } = SortMode.Total;
+        public SortMode   SortMode   { get; private set; } = SortMode.Total;
+        public SortWindow SortWindow { get; private set; } = SortWindow.Short;
 
         public DataStack(IReadOnlyList<IPNetwork> localNetworks)
         {
@@ -30,6 +32,11 @@ namespace tiktop.Data
         {
             lock (_lockObj)
                 SortMode = (SortMode)(((int)SortMode + 1) % 3);
+        }
+
+        public void SetSortWindow(SortWindow window)
+        {
+            lock (_lockObj) SortWindow = window;
         }
 
         public void ResetPeaks()
@@ -123,21 +130,57 @@ namespace tiktop.Data
 
             items = items.OrderBy(iPair => iPair.SectionNr).ToArray(); //sort after lock
 
-            var topIpTraffic = lastFinalizedSection.GetTopIps(nrOfItems, SortMode).Select(i=>
-                new DataSnapshotIpRow(i, 
-                    items.Take(shortWindowCnt).Select(ii=>ii.GetIpTraffic(i)).ToArray(),
-                    items.Take(mediumWindowCnt).Select(ii => ii.GetIpTraffic(i)).ToArray(),
-                    items.Take(longWindowCnt).Select(ii => ii.GetIpTraffic(i)).ToArray()
-                    ));
+            // Use TakeLast so windows contain the MOST RECENT N sections, not oldest.
+            var shortWindow  = items.TakeLast(shortWindowCnt).ToArray();
+            var mediumWindow = items.TakeLast(mediumWindowCnt).ToArray();
+            var longWindow   = items.TakeLast(longWindowCnt).ToArray();
+
+            // Select and sort top IPs according to the chosen sort window.
+            IEnumerable<DataStackSectionIp> sortedIps = SortWindow switch
+            {
+                SortWindow.Medium => SortByWindowAvg(lastFinalizedSection.GetAllIps(), mediumWindow, SortMode, nrOfItems),
+                SortWindow.Long   => SortByWindowAvg(lastFinalizedSection.GetAllIps(), longWindow,   SortMode, nrOfItems),
+                _                 => lastFinalizedSection.GetTopIps(nrOfItems, SortMode),
+            };
+
+            var topIpTraffic = sortedIps.Select(i =>
+                new DataSnapshotIpRow(i,
+                    shortWindow .Select(ii => ii.GetIpTraffic(i)).ToArray(),
+                    mediumWindow.Select(ii => ii.GetIpTraffic(i)).ToArray(),
+                    longWindow  .Select(ii => ii.GetIpTraffic(i)).ToArray()
+                ));
+
+            static double SafeAvg(DataStackSection[] w, Func<DataStackSection, double> fn) =>
+                w.Length > 0 ? w.Average(fn) : 0;
+            static double SafeMax(DataStackSection[] w, Func<DataStackSection, double> fn) =>
+                w.Length > 0 ? w.Max(fn) : 0;
 
             return new DataSnapshot(
-               lastFinalizedSection.TotalTx, lastFinalizedSection.TotalRx,
-              _txPeak, _rxPeak, _totalPeak,
-              new double[] { items.Take(shortWindowCnt).Average(i => i.TotalTx), items.Take(mediumWindowCnt).Max(i => i.TotalTx), items.Take(longWindowCnt).Max(i => i.TotalTx) },
-              new double[] { items.Take(shortWindowCnt).Max(i => i.TotalRx), items.Take(mediumWindowCnt).Max(i => i.TotalRx), items.Take(longWindowCnt).Max(i => i.TotalRx) },
-              new double[] { items.Take(shortWindowCnt).Max(i => i.TotalTx + i.TotalRx), items.Take(mediumWindowCnt).Max(i => i.TotalTx + i.TotalRx), items.Take(longWindowCnt).Max(i => i.TotalTx + i.TotalRx) },
-              topIpTraffic
-              );
+                lastFinalizedSection.TotalTx, lastFinalizedSection.TotalRx,
+                _txPeak, _rxPeak, _totalPeak,
+                new double[] { SafeAvg(shortWindow, i => i.TotalTx), SafeMax(mediumWindow, i => i.TotalTx), SafeMax(longWindow, i => i.TotalTx) },
+                new double[] { SafeAvg(shortWindow, i => i.TotalRx), SafeMax(mediumWindow, i => i.TotalRx), SafeMax(longWindow, i => i.TotalRx) },
+                new double[] { SafeAvg(shortWindow, i => i.TotalTx + i.TotalRx), SafeMax(mediumWindow, i => i.TotalTx + i.TotalRx), SafeMax(longWindow, i => i.TotalTx + i.TotalRx) },
+                topIpTraffic
+            );
+        }
+
+        private static DataStackSectionIp[] SortByWindowAvg(
+            IEnumerable<DataStackSectionIp> candidates,
+            DataStackSection[] window,
+            SortMode sort,
+            int take)
+        {
+            if (window.Length == 0)
+                return candidates.Take(take).ToArray();
+
+            Func<DataStackSectionIp, double> avgFn = sort switch
+            {
+                SortMode.Tx => ip => window.Average(s => (double)s.GetIpTraffic(ip).Tx),
+                SortMode.Rx => ip => window.Average(s => (double)s.GetIpTraffic(ip).Rx),
+                _            => ip => window.Average(s => (double)s.GetIpTraffic(ip).Total),
+            };
+            return candidates.OrderByDescending(avgFn).Take(take).ToArray();
         }
     }
 }

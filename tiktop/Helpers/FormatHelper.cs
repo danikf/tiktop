@@ -8,17 +8,15 @@ namespace tiktop.Helpers
 {
     public static class FormatHelper
     {
-        public static string FormatTraffic(long bps, bool padRight = false)
+        public static string FormatTraffic(long bps, bool bits = false, bool padRight = false)
         {
-            //https://stackoverflow.com/questions/281640/how-do-i-get-a-human-readable-file-size-in-bytes-abbreviation-using-net
-            double tmpNr = bps;
-
+            double tmpNr = bits ? bps * 8.0 : bps;
             string[] sizes = { "b", "Kb", "Mb", "Gb", "Tb" };
             int order = 0;
             while (tmpNr >= 1024 && order < sizes.Length - 1)
             {
                 order++;
-                tmpNr = tmpNr / 1024;
+                tmpNr /= 1024;
             }
 
             string result = tmpNr.ToString().SafePrefix(4) + sizes[order];
