@@ -18,8 +18,8 @@ namespace tiktop
 
     class Visualiser : IDisposable
     {
-        const int headerHeight = 2;
-        const int footerHeight = 5 + 1; // separator + controls + TX + RX + TOTAL + last-line guard
+        const int headerHeight = 3; // scale labels + tick marks + column header
+        const int footerHeight = 5; // separator + controls + TX + RX + TOTAL
 
         private readonly DnsCache _dnsCache;
         private readonly object _lockObj = new object();
@@ -248,7 +248,13 @@ namespace tiktop
             }
             PlainRow(startRow + 1, new string(sep));
 
-            return startRow + 2;
+            // Row 2: column header  (address labels left, value labels right)
+            string colSfx = $" {"2s",7}  {"10s",7}  {"40s",7}  {"total",7}";
+            string colPfx = $"{"local".PadRight(aw)} ──  {"remote".PadRight(aw)} ";
+            string colHdr = colPfx.PadRight(W - colSfx.Length) + colSfx;
+            TintedRow(startRow + 2, colHdr, ConsoleColor.DarkGray);
+
+            return startRow + 3;
         }
 
         // ── Items ─────────────────────────────────────────────────────────────
@@ -373,7 +379,7 @@ namespace tiktop
             badge = badge.SafePrefix(W - 4);
             string dashes = new string('─', Math.Max(0, W - badge.Length));
             string sepKey = dashes + badge;
-            if (row < _bufH - 1 && _rowBuf[row] != sepKey)
+            if (row < _bufH && _rowBuf[row] != sepKey)
             {
                 _rowBuf[row] = sepKey;
                 Console.SetCursorPosition(0, row);
@@ -489,8 +495,9 @@ namespace tiktop
 
         private void HelpRow(int row, string text, ConsoleColor fg)
         {
-            if (row >= _bufH - 1) return;
-            string padded = text.SafePrefix(_bufW).PadRight(_bufW);
+            if (row >= _bufH) return;
+            int W     = EffW(row);
+            string padded = text.SafePrefix(W).PadRight(W);
             string bufKey = $"h{(int)fg}|{padded}";
             if (_rowBuf[row] == bufKey) return;
             _rowBuf[row] = bufKey;
@@ -503,7 +510,8 @@ namespace tiktop
 
         private void HelpKeyRow(int row, string key, string desc, int keyW, int W)
         {
-            if (row >= _bufH - 1) return;
+            if (row >= _bufH) return;
+            W = EffW(row);
             string keyPart  = $"  {key.PadRight(keyW)}  ";
             string descPart = desc.SafePrefix(Math.Max(1, W - keyPart.Length));
             string bufKey   = $"hk|{keyPart}|{descPart}";
@@ -534,10 +542,14 @@ namespace tiktop
 
         // ── Row writers ───────────────────────────────────────────────────────
 
+        // Available width for a row: last row gets W-1 to avoid terminal auto-scroll.
+        private int EffW(int row) => row == _bufH - 1 ? _bufW - 1 : _bufW;
+
         private void PlainRow(int row, string content)
         {
-            if (row >= _bufH - 1) return;
-            string padded = content.SafePrefix(_bufW).PadRight(_bufW);
+            if (row >= _bufH) return;
+            int W     = EffW(row);
+            string padded = content.SafePrefix(W).PadRight(W);
             if (_rowBuf[row] == padded) return;
             _rowBuf[row] = padded;
             Console.SetCursorPosition(0, row);
@@ -547,8 +559,9 @@ namespace tiktop
         // Row with a single uniform foreground color (no background).
         private void TintedRow(int row, string content, ConsoleColor fg)
         {
-            if (row >= _bufH - 1) return;
-            string padded = content.SafePrefix(_bufW).PadRight(_bufW);
+            if (row >= _bufH) return;
+            int W     = EffW(row);
+            string padded = content.SafePrefix(W).PadRight(W);
             string key    = $"{(int)fg}|{padded}";
             if (_rowBuf[row] == key) return;
             _rowBuf[row] = key;
@@ -562,8 +575,8 @@ namespace tiktop
         // Filled part: bg=barColor, fg=Black. Empty part: bg=Black, fg=barColor.
         private void BgRow(int row, string text, int barLen, ConsoleColor barColor)
         {
-            if (row >= _bufH - 1) return;
-            int W = _bufW;
+            if (row >= _bufH) return;
+            int W = EffW(row);
             string padded = text.SafePrefix(W).PadRight(W);
             string key    = $"bg{barLen}|{(int)barColor}|{padded}";
             if (_rowBuf[row] == key) return;
@@ -591,9 +604,9 @@ namespace tiktop
 
         private void DrawControls(int row)
         {
-            if (row >= _bufH - 1) return;
+            if (row >= _bufH) return;
 
-            int W        = _bufW;
+            int W        = EffW(row);
             bool hints   = W >= 110;
 
             string sortVal = _sortMode switch { SortMode.Tx => "TX", SortMode.Rx => "RX", _ => "Total" };
