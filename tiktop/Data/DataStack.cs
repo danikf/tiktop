@@ -26,7 +26,7 @@ namespace tiktop.Data
         private Dictionary<string, (long tx, long rx)> _cumulativeIp = new Dictionary<string, (long, long)>();
 
         public SortMode      SortMode      { get; private set; } = SortMode.Total;
-        public SortWindow    SortWindow    { get; private set; } = SortWindow.Short;
+        public SortWindow    SortWindow    { get; private set; } = SortWindow.Medium;
         public AggregateMode AggregateMode { get; private set; } = AggregateMode.None;
 
         public DataStack(IReadOnlyList<IPNetwork> localNetworks)
