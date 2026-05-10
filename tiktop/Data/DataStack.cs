@@ -15,7 +15,7 @@ namespace tiktop.Data
         private const int MAX_SECTIONS_CACHE_SIZE = 50;
 
         private readonly IReadOnlyList<IPNetwork> _localNetworks;
-        private object _lockObj = new object();
+        private readonly object _lockObj = new object();
         private Dictionary<long, DataStackSection> _itemsPerSection = new Dictionary<long, DataStackSection>(); //<index, Item>
         private long _txPeak;
         private long _rxPeak;
@@ -131,9 +131,8 @@ namespace tiktop.Data
                     return new DataSnapshot(_txPeak, _rxPeak, _totalPeak); //empty snapshot           
 
                 items = _itemsPerSection
-                    //.Where(iPair => iPair.Key > lastFinalizedSection.SectionNr - longWindowCnt)
-                    .Where(iPair => iPair.Value.IsFinalized)
-                    .Select(iPair => iPair.Value).ToArray();
+                    .Where(kv => kv.Value.IsFinalized)
+                    .Select(kv => kv.Value).ToArray();
 
                 _txPeak = Math.Max(_txPeak, lastFinalizedSection.TotalTx);
                 _rxPeak = Math.Max(_rxPeak, lastFinalizedSection.TotalRx);
