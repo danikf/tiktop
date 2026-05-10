@@ -138,23 +138,6 @@ namespace tiktop
                 return;
             }
 
-            // 1-interaction path: only _last exists, is complete with saved password
-            if (!cfg.PickProfile && sorted.Count == 1 && sorted[0].Name == "_last")
-            {
-                var last = sorted[0].Profile;
-                if (IsProfileComplete(last) && last.PasswordProtected != null)
-                {
-                    cfg.ApplyProfile(last, applyPassword: true);
-                    if (!string.IsNullOrEmpty(cfg.Pass))
-                    {
-                        Console.Write($"Connect: {cfg.Host}  {cfg.User}  {cfg.Interface}  [Enter] ");
-                        Console.ReadLine();
-                        return;
-                    }
-                    // Decryption failed: fall through to prompt
-                }
-            }
-
             // Show profile picker (1 interaction)
             var chosen = ShowProfilePicker(sorted);
 
@@ -406,7 +389,7 @@ namespace tiktop
             Console.WriteLine();
             Console.WriteLine("Startup behaviour:");
             Console.WriteLine("  No profiles saved   → prompts for all fields");
-            Console.WriteLine("  Only _last (+ pass) → confirm with Enter (1 interaction)");
+            Console.WriteLine("  Only _last saved    → picker with _last / <NEW>  (1 interaction)");
             Console.WriteLine("  Multiple profiles   → shows picker, default = _last [Enter]");
             Console.WriteLine();
             Console.WriteLine($"Profiles stored in: {ProfileManager.ConfigDir}");
