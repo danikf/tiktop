@@ -19,7 +19,7 @@ namespace tiktop
     class Visualiser : IDisposable
     {
         const int headerHeight = 2;
-        const int footerHeight = 4 + 1; // separator + TX + RX + TOTAL + last-line guard
+        const int footerHeight = 5 + 1; // separator + controls + TX + RX + TOTAL + last-line guard
 
         private readonly DnsCache _dnsCache;
         private readonly object _lockObj = new object();
@@ -32,6 +32,9 @@ namespace tiktop
 
         private string _statusMessage = "Connected";
         private ConsoleColor _statusColor = ConsoleColor.Green;
+        private SortMode      _sortMode      = SortMode.Total;
+        private SortWindow    _sortWindow    = SortWindow.Medium;
+        private AggregateMode _aggregateMode = AggregateMode.None;
         private ResolveMode _resolveMode = ResolveMode.DnsService;
         private int? _countOverride;
         private DisplayMode _displayMode = DisplayMode.Both;
@@ -70,6 +73,11 @@ namespace tiktop
         public void SetStatus(string message, ConsoleColor color = ConsoleColor.Red)
         {
             lock (_lockObj) { _statusMessage = message; _statusColor = color; }
+        }
+
+        public void SetSortState(SortMode sort, SortWindow window, AggregateMode agg)
+        {
+            lock (_lockObj) { _sortMode = sort; _sortWindow = window; _aggregateMode = agg; }
         }
 
         public void CycleResolveMode()
@@ -112,7 +120,7 @@ namespace tiktop
             lock (_lockObj)
             {
                 _freezeOrder = !_freezeOrder;
-                if (!_freezeOrder) _frozenOrder = null; // clear on unfreeze
+                if (!_freezeOrder) _frozenOrder = null;
             }
         }
 
@@ -127,7 +135,6 @@ namespace tiktop
                 int W = Console.WindowWidth;
                 int H = Console.WindowHeight;
 
-                // First draw or resize: clear and rebuild buffer.
                 if (_firstDraw || W != _bufW || H != _bufH)
                 {
                     Console.Clear();
@@ -137,12 +144,9 @@ namespace tiktop
                     _firstDraw = false;
                 }
 
-                // Paused: hold the last snapshot so data rows don't change;
-                // the status badge still re-renders each tick (dirty key changes).
                 DataSnapshot snap = _paused ? _lastSnapshot : data;
                 if (!_paused) _lastSnapshot = data;
 
-                // Apply freeze-order: capture order on first tick, then reorder by it.
                 DataSnapshotIpRow[] displayItems = snap.TopIpTraffic;
                 if (_freezeOrder)
                 {
@@ -160,20 +164,21 @@ namespace tiktop
                     }
                 }
 
-                // Clamp scroll offset to valid range.
                 _scrollOffset = Math.Clamp(_scrollOffset, 0, Math.Max(0, displayItems.Length - 1));
 
-                var (aw, bw) = ComputeLayout();
+                int aw = ComputeLayout();
                 var savedFg = Console.ForegroundColor;
+                var savedBg = Console.BackgroundColor;
                 try
                 {
-                    int row = DrawHeader(snap, aw, bw, 0);
-                    DrawItems(displayItems, snap.PeakTotal, NrOfItems, aw, bw, row);
-                    DrawFooter(snap, aw, bw, _bufH - footerHeight);
+                    int row = DrawHeader(snap, aw, 0);
+                    DrawItems(displayItems, snap.PeakTotal, NrOfItems, aw, row);
+                    DrawFooter(snap, aw, _bufH - footerHeight);
                 }
                 finally
                 {
                     Console.ForegroundColor = savedFg;
+                    Console.BackgroundColor = savedBg;
                 }
             }
         }
@@ -183,38 +188,32 @@ namespace tiktop
 
         // ── Layout ────────────────────────────────────────────────────────────
 
-        // Row: {local:<aw>} => {remote+port:<aw>} {bar:<bw>} {avg2s} {avg10s} {avg40s} {cumul}
-        // Width: aw + 4 + aw + 1 + bw + (1+6+2+6+2+6+2+6) = 2*aw + bw + 36
-        private (int aw, int bw) ComputeLayout()
+        // Row: {local:<aw>} => {remote+port:<aw>} <padding> {avg2s} {avg10s} {avg40s} {cumul}
+        // Fixed content: 2*aw + 5 + 31 = 2*aw + 36; remaining W - 2*aw - 36 chars are padding
+        // (background color covers full width proportionally, including padding and sfx)
+        private int ComputeLayout()
         {
-            int W = _bufW;
-            // Address columns: 1/4 of space each, capped at 35 — bars take the rest.
-            // Formula guarantees 2*aw + bw + 36 == W (exact, no drift).
-            int aw = Math.Max(10, Math.Min(35, (W - 36) / 4));
-            int bw = Math.Max(10, W - 2 * aw - 36);
-            return (aw, bw);
+            return Math.Max(10, Math.Min(35, (_bufW - 36) / 2));
         }
 
         // ── Header ────────────────────────────────────────────────────────────
 
-        private int DrawHeader(DataSnapshot data, int aw, int bw, int startRow)
+        private int DrawHeader(DataSnapshot data, int aw, int startRow)
         {
             int W = _bufW;
-            int barStart = 2 * aw + 5;
             long peak = data.PeakTotal;
             double step = peak / 5.0;
 
-            // Row 0: scale labels + clock (right-aligned)
+            // Row 0: scale labels at W*1/5 .. W*5/5, clock right-aligned
             char[] labelLine = new string(' ', W).ToCharArray();
             for (int i = 1; i <= 5; i++)
             {
                 string label = FormatHelper.FormatTraffic((long)(step * i), _bitsMode).TrimStart();
-                int tickCol = barStart + (int)Math.Round(bw * i / 5.0) - 1;
+                int tickCol = (int)Math.Round(W * i / 5.0) - 1;
                 int s = tickCol - label.Length + 1;
                 for (int j = 0; j < label.Length; j++)
                     if (s + j >= 0 && s + j < W) labelLine[s + j] = label[j];
             }
-            // Clock at the far right
             string clock = DateTime.Now.ToString("HH:mm:ss");
             for (int j = 0; j < clock.Length; j++)
             {
@@ -223,12 +222,12 @@ namespace tiktop
             }
             PlainRow(startRow, new string(labelLine));
 
-            // Row 1: └── (full width) ──┴────┴────┴────┴────┴── (tick marks over bar)
+            // Row 1: └─────┴─────┴─────┴─────┴──── (tick marks at W*1/5 .. W)
             char[] sep = new string('─', W).ToCharArray();
             sep[0] = '└';
             for (int i = 1; i <= 5; i++)
             {
-                int tickCol = barStart + (int)Math.Round(bw * i / 5.0) - 1;
+                int tickCol = (int)Math.Round(W * i / 5.0) - 1;
                 if (tickCol >= 0 && tickCol < W) sep[tickCol] = '┴';
             }
             PlainRow(startRow + 1, new string(sep));
@@ -251,7 +250,7 @@ namespace tiktop
             return false;
         }
 
-        private void DrawItems(DataSnapshotIpRow[] items, long peak, int cnt, int aw, int bw, int startRow)
+        private void DrawItems(DataSnapshotIpRow[] items, long peak, int cnt, int aw, int startRow)
         {
             int row = startRow;
 
@@ -270,7 +269,6 @@ namespace tiktop
                 string remote;
                 if (isPortAgg)
                 {
-                    // Port-aggregated row: show service name in remote column.
                     local  = FormatHelper.ShortenHostname("[*]", aw);
                     string portLabel = useSvcName
                         ? FormatHelper.FormatPort(ip.LastSection.DstPort).TrimStart(':')
@@ -279,7 +277,6 @@ namespace tiktop
                 }
                 else if (isAgg)
                 {
-                    // Src/dst-aggregated row: one side has "[*]" as a wildcard address.
                     string srcAddr = ip.LastSection.SrcAddress == "*" ? "[*]" : ip.LastSection.SrcAddress;
                     string dstAddr = ip.LastSection.DstAddress == "*" ? "[*]" : ip.LastSection.DstAddress;
                     if (useDns)
@@ -296,7 +293,6 @@ namespace tiktop
                         (useDns ? _dnsCache.TryGet(ip.LastSection.SrcAddress) : null)
                         ?? ip.LastSection.SrcAddress, aw);
 
-                    // Remote: address + destination port (service name or raw number)
                     string dstHostname = (useDns ? _dnsCache.TryGet(ip.LastSection.DstAddress) : null)
                                          ?? ip.LastSection.DstAddress;
                     string portSuffix = useSvcName
@@ -314,25 +310,28 @@ namespace tiktop
                 long rxM = (long)ip.MediumRange.Average(s => (double)s.Rx);
                 long rxL = (long)ip.LongRange  .Average(s => (double)s.Rx);
 
-                // Prefix is exactly 2*aw+5 chars so columns always align.
                 string txPfx = $"{local.PadRight(aw)} => {remote.PadRight(aw)} ";
                 string rxPfx = $"{"".PadRight(aw)} <= {"".PadRight(aw)} ";
                 string txSfx = Sfx(txS, txM, txL, ip.CumulativeTx);
                 string rxSfx = Sfx(rxS, rxM, rxL, ip.CumulativeRx);
 
+                // sfx is right-aligned; padding between prefix and sfx gets covered by background
+                string txText = txPfx.PadRight(_bufW - txSfx.Length) + txSfx;
+                string rxText = rxPfx.PadRight(_bufW - rxSfx.Length) + rxSfx;
+
                 if (_displayMode != DisplayMode.RxOnly)
                 {
                     if (_showBars)
-                        ColoredRow(row++, txPfx, RenderBar(ip.LastSection.Tx, peak, bw, _logScale), ConsoleColor.Green, txSfx);
+                        BgRow(row++, txText, BarLen(ip.LastSection.Tx, peak), ConsoleColor.Green);
                     else
-                        TintedRow(row++, txPfx + new string(' ', bw) + txSfx, ConsoleColor.Green);
+                        TintedRow(row++, txText, ConsoleColor.Green);
                 }
                 if (_displayMode != DisplayMode.TxOnly)
                 {
                     if (_showBars)
-                        ColoredRow(row++, rxPfx, RenderBar(ip.LastSection.Rx, peak, bw, _logScale), ConsoleColor.Cyan, rxSfx);
+                        BgRow(row++, rxText, BarLen(ip.LastSection.Rx, peak), ConsoleColor.Cyan);
                     else
-                        TintedRow(row++, rxPfx + new string(' ', bw) + rxSfx, ConsoleColor.Cyan);
+                        TintedRow(row++, rxText, ConsoleColor.Cyan);
                 }
             }
 
@@ -346,7 +345,7 @@ namespace tiktop
 
         // ── Footer ────────────────────────────────────────────────────────────
 
-        private void DrawFooter(DataSnapshot data, int aw, int bw, int startRow)
+        private void DrawFooter(DataSnapshot data, int aw, int startRow)
         {
             int W = _bufW;
             int row = startRow;
@@ -373,9 +372,8 @@ namespace tiktop
             }
             row++;
 
-            int ratesCol = 2 * aw + 5 + bw + 1;
+            DrawControls(row++);
 
-            // TX (green) / RX (cyan) / TOTAL (default)
             ConsoleColor[] colors    = { ConsoleColor.Green, ConsoleColor.Cyan, ConsoleColor.Gray };
             string[]   lbls          = { "TX:", "RX:", "TOTAL:" };
             long[]     actuals       = { data.ActualTx, data.ActualRx, data.ActualTx + data.ActualRx };
@@ -383,46 +381,28 @@ namespace tiktop
             double[][] avgs          = { data.TxAvgs,   data.RxAvgs,   data.TotalAvgs };
             long[]     cumulatives   = { data.CumulativeTx, data.CumulativeRx, data.CumulativeTotal };
 
-            const int miniBarW = 16;
             for (int i = 0; i < 3; i++)
             {
                 string left  = $"{lbls[i]}  cur:{FormatHelper.FormatTraffic(actuals[i], _bitsMode)}   peak:{FormatHelper.FormatTraffic(peaks[i], _bitsMode)}";
-                string rates = $"{FormatHelper.FormatTraffic((long)avgs[i][0], _bitsMode)}  {FormatHelper.FormatTraffic((long)avgs[i][1], _bitsMode)}  {FormatHelper.FormatTraffic((long)avgs[i][2], _bitsMode)}  {FormatHelper.FormatTraffic(cumulatives[i], _bitsMode)}";
+                string rates = Sfx((long)avgs[i][0], (long)avgs[i][1], (long)avgs[i][2], cumulatives[i]);
+                string text  = left.PadRight(W - rates.Length) + rates;
+
                 if (_showBars)
-                {
-                    string prefix  = (left + "  ").PadRight(ratesCol - miniBarW);
-                    string miniBar = RenderBar(actuals[i], peaks[i], miniBarW, _logScale);
-                    ColoredRow(row++, prefix, miniBar, colors[i], rates);
-                }
+                    BgRow(row++, text, BarLen(actuals[i], peaks[i]), colors[i]);
                 else
-                {
-                    TintedRow(row++, $"{left.PadRight(ratesCol)}{rates}", colors[i]);
-                }
+                    TintedRow(row++, text, colors[i]);
             }
         }
 
-        // ── Bar renderer ──────────────────────────────────────────────────────
+        // ── Bar length ────────────────────────────────────────────────────────
 
-        private static string RenderBar(long value, long peak, int width, bool logScale = false)
+        private int BarLen(long value, long peak)
         {
-            if (width <= 0) return "";
-            if (peak <= 0)  return new string('░', width);
-
-            double ratio = logScale && value > 0
+            if (peak <= 0 || value <= 0) return 0;
+            double ratio = _logScale
                 ? Math.Log(value + 1.0) / Math.Log(peak + 1.0)
                 : (double)value / peak;
-            ratio = Math.Min(1.0, ratio);
-            double filled    = ratio * width * 8;
-            int    fullBlocks = (int)(filled / 8);
-            int    partial    = (int)(filled % 8);
-            char[] partials   = { '\0', '▏', '▎', '▍', '▌', '▋', '▊', '▉' };
-
-            var sb = new StringBuilder(width);
-            sb.Append('█', fullBlocks);
-            if (partial > 0 && fullBlocks < width) sb.Append(partials[partial]);
-            int used = fullBlocks + (partial > 0 ? 1 : 0);
-            sb.Append('░', Math.Max(0, width - used));
-            return sb.ToString();
+            return (int)(Math.Min(1.0, ratio) * _bufW);
         }
 
         // ── Row writers ───────────────────────────────────────────────────────
@@ -437,7 +417,7 @@ namespace tiktop
             Console.Write(padded);
         }
 
-        // Row with a single uniform foreground color (dirty-checked with color prefix).
+        // Row with a single uniform foreground color (no background).
         private void TintedRow(int row, string content, ConsoleColor fg)
         {
             if (row >= _bufH - 1) return;
@@ -451,54 +431,135 @@ namespace tiktop
             Console.ForegroundColor = ConsoleColor.Gray;
         }
 
-        // Row with colored bar: filled part in barColor, empty ░ in DarkGray.
-        private void ColoredRow(int row, string prefix, string bar, ConsoleColor barColor, string suffix)
+        // Row with background color covering the first barLen columns (iftop style).
+        // Filled part: bg=barColor, fg=Black. Empty part: bg=Black, fg=barColor.
+        private void BgRow(int row, string text, int barLen, ConsoleColor barColor)
         {
             if (row >= _bufH - 1) return;
             int W = _bufW;
-
-            string full = (prefix + bar + suffix).SafePrefix(W).PadRight(W);
-            if (_rowBuf[row] == full) return;
-            _rowBuf[row] = full;
+            string padded = text.SafePrefix(W).PadRight(W);
+            string key    = $"bg{barLen}|{(int)barColor}|{padded}";
+            if (_rowBuf[row] == key) return;
+            _rowBuf[row] = key;
             Console.SetCursorPosition(0, row);
 
-            // prefix
-            string p = prefix.SafePrefix(W);
-            Console.Write(p);
-            int col = p.Length;
-
-            // bar: filled chars in barColor, empty ░ in DarkGray
-            if (col < W)
+            int fill = Math.Clamp(barLen, 0, W);
+            if (fill > 0)
             {
-                string b = bar.SafePrefix(W - col);
-                int emptyStart = b.IndexOf('░');
-                string filledPart = emptyStart >= 0 ? b[..emptyStart] : b;
-                string emptyPart  = emptyStart >= 0 ? b[emptyStart..] : "";
+                Console.BackgroundColor = barColor;
+                Console.ForegroundColor = ConsoleColor.Black;
+                Console.Write(padded[..fill]);
+            }
+            if (fill < W)
+            {
+                Console.BackgroundColor = ConsoleColor.Black;
+                Console.ForegroundColor = barColor;
+                Console.Write(padded[fill..]);
+            }
+            Console.BackgroundColor = ConsoleColor.Black;
+            Console.ForegroundColor = ConsoleColor.Gray;
+        }
 
-                if (filledPart.Length > 0)
-                {
-                    Console.ForegroundColor = barColor;
-                    Console.Write(filledPart);
-                    col += filledPart.Length;
-                }
-                if (emptyPart.Length > 0 && col < W)
-                {
-                    Console.ForegroundColor = ConsoleColor.DarkGray;
-                    Console.Write(emptyPart.SafePrefix(W - col));
-                    col += emptyPart.Length;
-                }
+        // ── Controls row ──────────────────────────────────────────────────────
+
+        private void DrawControls(int row)
+        {
+            if (row >= _bufH - 1) return;
+
+            int W        = _bufW;
+            bool hints   = W >= 110;
+
+            string sortVal = _sortMode switch { SortMode.Tx => "TX", SortMode.Rx => "RX", _ => "Total" };
+            string aggVal  = _aggregateMode switch {
+                AggregateMode.BySrc  => ":src",
+                AggregateMode.ByDst  => ":dst",
+                AggregateMode.ByPort => ":port",
+                _                    => "",
+            };
+            string dnsVal  = _resolveMode switch {
+                ResolveMode.IpPort    => ":ip+port",
+                ResolveMode.IpService => ":ip+svc",
+                _                     => ":dns+svc",
+            };
+            string dispVal = _displayMode switch { DisplayMode.TxOnly => ":TX", DisplayMode.RxOnly => ":RX", _ => "" };
+            string filtVal = !string.IsNullOrEmpty(_filterText) ? $":{_filterText}" : "";
+            string jVal    = _scrollOffset > 0 ? $" ↓{_scrollOffset}" : (hints ? " ↓" : "");
+
+            // Each chip: (key, value-after-key, isActive)
+            // isActive → yellow bg+black fg on key; inactive → dark-gray bg+white fg
+            (string key, string val, bool active)[] chips = {
+                ("q",  hints ? " quit"  : "",                              false),
+                ("p",  ":" + sortVal,                                      _sortMode != SortMode.Total),
+                ("1",  hints ? ":2s"    : "",                             _sortWindow == SortWindow.Short),
+                ("2",  hints ? ":10s"   : "",                             _sortWindow == SortWindow.Medium),
+                ("3",  hints ? ":40s"   : "",                             _sortWindow == SortWindow.Long),
+                ("r",  hints ? " reset" : "",                              false),
+                ("a",  aggVal,                                             _aggregateMode != AggregateMode.None),
+                ("/",  filtVal,                                            !string.IsNullOrEmpty(_filterText)),
+                ("d",  dnsVal,                                             _resolveMode != ResolveMode.DnsService),
+                ("t",  dispVal,                                            _displayMode != DisplayMode.Both),
+                ("b",  !_showBars   ? (hints ? " off"   : "") : "",       !_showBars),
+                ("B",  _bitsMode    ? (hints ? " bits"  : "") : "",       _bitsMode),
+                ("L",  _logScale    ? (hints ? " log"   : "") : "",       _logScale),
+                ("o",  _freezeOrder ? (hints ? " frz"   : "") : "",       _freezeOrder),
+                ("f",  _paused      ? (hints ? " pause" : "") : "",       _paused),
+                ("j",  jVal,                                               _scrollOffset > 0),
+                ("k",  hints ? " ↑" : "",                                 _scrollOffset > 0),
+                ("±",  hints ? " rows" : "",                              false),
+            };
+
+            string dirtyKey = $"ctrl|{_sortMode}|{_sortWindow}|{_aggregateMode}|{_resolveMode}|{_displayMode}" +
+                              $"|{_logScale}|{_showBars}|{_bitsMode}|{_freezeOrder}|{_paused}" +
+                              $"|{_scrollOffset}|{_filterText}|{W}";
+            if (_rowBuf[row] == dirtyKey) return;
+            _rowBuf[row] = dirtyKey;
+
+            Console.SetCursorPosition(0, row);
+            int col = 0;
+
+            foreach (var (key, val, active) in chips)
+            {
+                if (col + 1 + key.Length > W) break;
+
+                // Leading space
+                Console.BackgroundColor = ConsoleColor.Black;
                 Console.ForegroundColor = ConsoleColor.Gray;
+                Console.Write(' ');
+                col++;
+
+                // Key letter
+                Console.BackgroundColor = active ? ConsoleColor.Yellow   : ConsoleColor.DarkGray;
+                Console.ForegroundColor = active ? ConsoleColor.Black    : ConsoleColor.White;
+                Console.Write(key);
+                col += key.Length;
+
+                // Value / hint text
+                if (val.Length > 0 && col + val.Length < W)
+                {
+                    Console.BackgroundColor = ConsoleColor.Black;
+                    Console.ForegroundColor = active ? ConsoleColor.Yellow : ConsoleColor.DarkGray;
+                    Console.Write(val);
+                    col += val.Length;
+                }
             }
 
-            // suffix
+            // Pad to end of row
             if (col < W)
-                Console.Write(suffix.SafePrefix(W - col).PadRight(W - col));
+            {
+                Console.BackgroundColor = ConsoleColor.Black;
+                Console.ForegroundColor = ConsoleColor.Gray;
+                Console.Write(new string(' ', W - col));
+            }
+
+            Console.BackgroundColor = ConsoleColor.Black;
+            Console.ForegroundColor = ConsoleColor.Gray;
         }
 
         public void Dispose()
         {
             lock (_lockObj)
             {
+                Console.BackgroundColor = ConsoleColor.Black;
                 Console.CursorVisible = true;
                 _isDisposed = true;
             }
