@@ -140,7 +140,7 @@ Profiles are stored in:
 | `p` | Cycle sort order: **Total → TX → RX** |
 | `1` / `2` / `3` | Sort window: **instant → 2 s avg → 10 s avg → 40 s avg**; status shows `sort:Total/10s` |
 | `r` | Reset all peak values |
-| `a` | Cycle aggregation: **None → by-src (local IP) → by-dst (remote IP)**; aggregated rows show `[*]` for the wildcard side |
+| `a` | Cycle aggregation: **None → by-src (local IP) → by-dst (remote IP) → by-port (dst port)**; aggregated rows show `[*]` for wildcard sides; port mode shows service name (https/ssh/rdp…) in remote column |
 | `d` | Cycle address/port display: **dns+svc → ip+port → ip+svc** |
 | `t` | Cycle display mode: **Both → TX only → RX only** (doubles visible connections) |
 | `b` | Toggle bar graphs on/off |

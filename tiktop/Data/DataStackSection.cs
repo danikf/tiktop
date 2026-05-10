@@ -95,6 +95,14 @@ namespace tiktop.Data
             return new DataStackSectionIp("*", "*", dstAddress, "*", rx, tx);
         }
 
+        internal DataStackSectionIp GetAggregatedByPort(string dstPort)
+        {
+            long tx = 0, rx = 0;
+            foreach (var ip in _ipItems.Values)
+                if (ip.DstPort == dstPort) { tx += ip.Tx; rx += ip.Rx; }
+            return new DataStackSectionIp("*", "*", "*", dstPort, rx, tx);
+        }
+
         //private void RemoveOldItems(DateTime removeOlderThan)
         //{
         //    for (int i = _ipItems.Count - 1; i >= 0; i--)

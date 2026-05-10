@@ -66,7 +66,7 @@ Cílem je konzolová aplikace podobná `iftop`, která se připojí na MikroTik 
 |---|--------|-------|
 | 7 | ✅ **Live host filter (`/`)** | `/` otevře inline filter; Enter potvrdí, Esc nebo `/` vymaže; filtruje dle IP i DNS jména; status ukazuje `/text` |
 | 8 | ✅ **Kumulativní celkový přenos** | 4. sloupec v řádcích (per-IP cumulative TX/RX od spuštění) + cumulative v patičce TX/RX/TOTAL; layout rozšířen na `2*aw + bw + 36 = W` |
-| 9 | **Port-based grouping** | Seskupit toky podle dst portu – vidět celkový HTTPS/HTTP/SSH traffic agregovaně |
+| 9 | ✅ **Port-based grouping** | `a` cykluje přes None→BySrc→ByDst→ByPort; ByPort seskupuje toky dle dst portu, remote sloupec zobrazuje service name (https/ssh/rdp…) nebo číslo portu dle resolve modu |
 
 ---
 
