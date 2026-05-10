@@ -256,12 +256,48 @@ namespace tiktop
             PlainRow(startRow + 1, new string(sep));
 
             // Row 2: column header  (address labels left, value labels right)
-            string colSfx = $" {"2s",7}  {"10s",7}  {"40s",7}  {"total",7}";
             string colPfx = $"{"local".PadRight(aw)} ── {"remote".PadRight(aw)} ";
-            string colHdr = colPfx.PadRight(W - colSfx.Length) + colSfx;
-            TintedRow(startRow + 2, colHdr, ConsoleColor.DarkGray);
+            DrawColHeader(startRow + 2, colPfx, W);
 
             return startRow + 3;
+        }
+
+        private void DrawColHeader(int row, string prefix, int W)
+        {
+            if (row >= _bufH) return;
+            int Weff = EffW(row);
+
+            // Each label segment: separator + label right-justified in 7 chars
+            // Total suffix = 1 + 7 + 2 + 7 + 2 + 7 + 2 + 7 = 35 chars
+            const int sfxLen = 35;
+            string prefixPadded = prefix.PadRight(Weff - sfxLen).SafePrefix(Weff - sfxLen);
+
+            int activeCol = _sortWindow switch {
+                SortWindow.Short      => 0,
+                SortWindow.Long       => 2,
+                SortWindow.Cumulative => 3,
+                _                     => 1,
+            };
+
+            string dirtyKey = $"ch|{activeCol}|{Weff}|{prefixPadded}";
+            if (_rowBuf[row] == dirtyKey) return;
+            _rowBuf[row] = dirtyKey;
+
+            AnsiHelper.AppendMove(_frame, row);
+            _frame.Append(AnsiHelper.Bg(ConsoleColor.Black));
+            _frame.Append(AnsiHelper.Fg(ConsoleColor.DarkGray));
+            _frame.Append(prefixPadded);
+
+            string[] labels = { "2s", "10s", "40s", "total" };
+            for (int i = 0; i < labels.Length; i++)
+            {
+                bool isActive = i == activeCol;
+                _frame.Append(AnsiHelper.Fg(ConsoleColor.DarkGray));
+                _frame.Append(i == 0 ? " " : "  ");
+                _frame.Append(AnsiHelper.Fg(isActive ? ConsoleColor.Yellow : ConsoleColor.DarkGray));
+                _frame.Append($"{labels[i],7}");
+            }
+            _frame.Append(AnsiHelper.Reset);
         }
 
         // ── Items ─────────────────────────────────────────────────────────────
