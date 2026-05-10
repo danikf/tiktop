@@ -7,6 +7,11 @@
     <AssemblyName>tiktop</AssemblyName>
     <Nullable>enable</Nullable>
     <Version>1.0.0</Version>
+    <Authors>danikf</Authors>
+    <Description>Mikrotik version of famous iftop tool</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/danikf/tiktop</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
   </PropertyGroup>
 
   <!-- Single-file publish settings (activated via -p:PublishSingleFile=true) -->
@@ -27,6 +32,12 @@
   <ItemGroup Condition="'$(CI)' == 'true'">
     <PackageReference Include="tik4net" Version="3.5.0" />
     <PackageReference Include="tik4net.objects" Version="3.5.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\README.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="DnsClient" Version="1.8.0" />
