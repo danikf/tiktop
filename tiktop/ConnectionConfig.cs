@@ -17,10 +17,14 @@ namespace tiktop
         public string? DnsServer { get; set; }
 
         // Profile actions (not part of the connection itself)
-        public string? ProfileName { get; private set; }
-        public string? SaveAs      { get; private set; }
+        public string? ProfileName  { get; private set; }
+        public string? SaveAs       { get; private set; }
         /// <summary>When true, the connection is NOT auto-saved to the _last profile.</summary>
-        public bool    NoSave      { get; private set; }
+        public bool    NoSave       { get; private set; }
+        /// <summary>When true, auto-save and --save-as omit the password.</summary>
+        public bool    SaveNoPass   { get; private set; }
+        /// <summary>When true, always show the profile picker (skip 0-interaction auto-connect).</summary>
+        public bool    PickProfile  { get; private set; }
 
         public int ResolvedPort => Port ?? (UseSsl ? 8729 : 8728);
 
@@ -73,6 +77,12 @@ namespace tiktop
                     case "--private":
                         cfg.NoSave = true;
                         break;
+                    case "--save-no-pass":
+                        cfg.SaveNoPass = true;
+                        break;
+                    case "--pick-profile":
+                        cfg.PickProfile = true;
+                        break;
                     case "--list-profiles":
                         ListProfiles(profiles);
                         Environment.Exit(0);
@@ -89,7 +99,7 @@ namespace tiktop
                 }
             }
 
-            // Load a named profile (all fields, silent – like providing CLI args)
+            // Explicit --profile: apply and fill any remaining missing fields
             if (cfg.ProfileName != null)
             {
                 var profile = profiles.Get(cfg.ProfileName);
@@ -99,17 +109,112 @@ namespace tiktop
                     ListProfiles(profiles);
                     Environment.Exit(1);
                 }
-                cfg.ApplyProfile(profile, applyPassword: true);
+                cfg.ApplyProfile(profile!, applyPassword: true);
+                PromptMissing(cfg);
+                return cfg;
             }
 
-            // Prompt for any missing fields, showing last-used values as defaults
-            StoredProfile? defaults = cfg.ProfileName == null ? profiles.GetLast() : null;
-            PromptMissing(cfg, defaults);
+            // Private / no-save mode: skip profile system entirely
+            if (cfg.NoSave)
+            {
+                PromptMissing(cfg);
+                return cfg;
+            }
 
+            // Normal startup: profile-based
+            StartWithProfiles(cfg, profiles);
             return cfg;
         }
 
-        // Apply a stored profile to any fields not already set
+        // ── Profile-based startup ─────────────────────────────────────────────
+
+        private static void StartWithProfiles(ConnectionConfig cfg, ProfileManager profiles)
+        {
+            var sorted = profiles.GetProfilesSorted();
+
+            if (sorted.Count == 0)
+            {
+                PromptMissing(cfg);
+                return;
+            }
+
+            // 0-interaction path: only _last exists, is complete with saved password
+            if (!cfg.PickProfile && sorted.Count == 1 && sorted[0].Name == "_last")
+            {
+                var last = sorted[0].Profile;
+                if (IsProfileComplete(last) && last.PasswordProtected != null)
+                {
+                    cfg.ApplyProfile(last, applyPassword: true);
+                    if (!string.IsNullOrEmpty(cfg.Pass))
+                    {
+                        Console.ForegroundColor = ConsoleColor.DarkGray;
+                        Console.WriteLine(
+                            $"[_last] {cfg.Host}  {cfg.User}  {cfg.Interface}" +
+                            "  (--pick-profile to switch)");
+                        Console.ResetColor();
+                        return;
+                    }
+                    // Decryption failed: fall through to prompt
+                }
+            }
+
+            // Show profile picker (1 interaction)
+            var chosen = ShowProfilePicker(sorted);
+
+            if (chosen == null)
+            {
+                // <NEW>
+                PromptMissing(cfg);
+                return;
+            }
+
+            cfg.ApplyProfile(chosen, applyPassword: true);
+            PromptMissing(cfg);
+        }
+
+        private static bool IsProfileComplete(StoredProfile p) =>
+            !string.IsNullOrEmpty(p.Host) &&
+            !string.IsNullOrEmpty(p.User) &&
+            !string.IsNullOrEmpty(p.Interface);
+
+        // Returns the chosen StoredProfile, or null for <NEW>.
+        private static StoredProfile? ShowProfilePicker(
+            List<(string Name, StoredProfile Profile)> sortedProfiles)
+        {
+            // Build ordered list: _last, <NEW>, named profiles (date desc)
+            var items = new List<(string Label, StoredProfile? Profile)>();
+
+            foreach (var (_, p) in sortedProfiles.Where(x => x.Name == "_last"))
+            {
+                string pass  = p.PasswordProtected != null ? " [pass]" : "";
+                string iface = p.Interface != null ? $"  {p.Interface}" : "";
+                items.Add(($"_last      {p.Host}  {p.User}{iface}{pass}", p));
+            }
+
+            items.Add(("<NEW>      new connection", null));
+
+            foreach (var (name, p) in sortedProfiles.Where(x => x.Name != "_last"))
+            {
+                string pass  = p.PasswordProtected != null ? " [pass]" : "";
+                string iface = p.Interface != null ? $"  {p.Interface}" : "";
+                string date  = p.SavedAt.HasValue ? $"  {p.SavedAt.Value:yyyy-MM-dd}" : "";
+                items.Add(($"{name,-10} {p.Host}  {p.User}{iface}{pass}{date}", p));
+            }
+
+            Console.WriteLine("Profiles:");
+            for (int i = 0; i < items.Count; i++)
+                Console.WriteLine($"  {i + 1}) {items[i].Label}");
+
+            Console.Write("Select [1]: ");
+            string sel = Console.ReadLine()?.Trim() ?? "";
+
+            if (!int.TryParse(sel, out int choice) || choice < 1 || choice > items.Count)
+                choice = 1;
+
+            return items[choice - 1].Profile;
+        }
+
+        // Apply a stored profile to any fields not already set via CLI
         public void ApplyProfile(StoredProfile p, bool applyPassword = false)
         {
             if (string.IsNullOrEmpty(Host)      && p.Host      != null) Host      = p.Host;
@@ -126,37 +231,23 @@ namespace tiktop
 
         // ── Interactive prompts ───────────────────────────────────────────────
 
-        private static void PromptMissing(ConnectionConfig cfg, StoredProfile? defaults)
+        private static void PromptMissing(ConnectionConfig cfg)
         {
-            cfg.Host = PromptField("Host", cfg.Host, defaults?.Host);
-            cfg.User = PromptField("Username", cfg.User, defaults?.User);
+            cfg.Host = PromptField("Host",     cfg.Host, null);
+            cfg.User = PromptField("Username", cfg.User, null);
 
             if (string.IsNullOrWhiteSpace(cfg.Pass))
             {
-                // Try decrypting the saved password first
-                string? savedPass = defaults?.PasswordProtected != null
-                    ? ProfileManager.Decrypt(defaults.PasswordProtected) : null;
-
-                if (savedPass != null)
-                {
-                    Console.Write("Password [saved]: ");
-                    string input = ReadMasked();
-                    Console.WriteLine();
-                    cfg.Pass = string.IsNullOrEmpty(input) ? savedPass : input;
-                }
-                else
-                {
-                    Console.Write("Password: ");
-                    cfg.Pass = ReadMasked();
-                    Console.WriteLine();
-                }
+                string context = !string.IsNullOrEmpty(cfg.User) && !string.IsNullOrEmpty(cfg.Host)
+                    ? $" [{cfg.User}@{cfg.Host}]"
+                    : "";
+                Console.Write($"Password{context}: ");
+                cfg.Pass = ReadMasked();
+                Console.WriteLine();
             }
 
             if (string.IsNullOrWhiteSpace(cfg.Interface))
-            {
-                string? defaultIface = defaults?.Interface;
-                cfg.Interface = PickInterface(cfg, defaultIface);
-            }
+                cfg.Interface = PickInterface(cfg, null);
         }
 
         private static string PromptField(string label, string current, string? defaultVal)
@@ -181,9 +272,7 @@ namespace tiktop
             var interfaces = FetchInterfaces(cfg);
 
             if (interfaces.Count == 0)
-            {
                 return PromptField("Interface", "", defaultIface ?? "ether1");
-            }
 
             int defaultIndex = defaultIface != null
                 ? interfaces.FindIndex(x => x.Name == defaultIface)
@@ -194,7 +283,7 @@ namespace tiktop
             for (int i = 0; i < interfaces.Count; i++)
             {
                 var (name, defName) = interfaces[i];
-                string label = name == defName ? name : $"{name}  (default-name: {defName})";
+                string label  = name == defName ? name : $"{name}  (default-name: {defName})";
                 string marker = i == defaultIndex ? "* " : "  ";
                 Console.WriteLine($" {marker}{i + 1}) {label}");
             }
@@ -206,7 +295,7 @@ namespace tiktop
                 return interfaces[defaultIndex].Name;
             if (int.TryParse(sel, out int choice) && choice >= 1 && choice <= interfaces.Count)
                 return interfaces[choice - 1].Name;
-            return sel; // user typed a name directly
+            return sel;
         }
 
         private static List<(string Name, string DefaultName)> FetchInterfaces(ConnectionConfig cfg)
@@ -234,7 +323,8 @@ namespace tiktop
 
         private static void ListProfiles(ProfileManager profiles)
         {
-            if (profiles.Profiles.Count == 0)
+            var sorted = profiles.GetProfilesSorted();
+            if (sorted.Count == 0)
             {
                 Console.WriteLine("No saved profiles.");
                 Console.WriteLine($"Use --save-as <name> to create one. Config dir: {ProfileManager.ConfigDir}");
@@ -242,12 +332,13 @@ namespace tiktop
             }
 
             Console.WriteLine("Saved profiles:");
-            foreach (var (name, p) in profiles.Profiles)
+            foreach (var (name, p) in sorted)
             {
                 string marker   = name == profiles.LastUsedName ? "*" : " ";
                 string passNote = p.PasswordProtected != null ? " [password saved]" : "";
                 string iface    = p.Interface != null ? $"  {p.Interface}" : "";
-                Console.WriteLine($"  {marker} {name,-20} {p.Host}  {p.User}{iface}{passNote}");
+                string date     = p.SavedAt.HasValue ? $"  ({p.SavedAt.Value:yyyy-MM-dd})" : "";
+                Console.WriteLine($"  {marker} {name,-20} {p.Host}  {p.User}{iface}{passNote}{date}");
             }
             Console.WriteLine($"\nConfig: {ProfileManager.ConfigDir}");
         }
@@ -306,14 +397,22 @@ namespace tiktop
             Console.WriteLine();
             Console.WriteLine("Profiles:");
             Console.WriteLine("      --profile <name>      Load a saved profile");
+            Console.WriteLine("      --pick-profile        Show profile picker (even if auto-connect would fire)");
             Console.WriteLine("      --save-as <name>      Save current params as a named profile");
+            Console.WriteLine("      --save-no-pass        Save profile/auto-save without password");
             Console.WriteLine("      --list-profiles       List all saved profiles and exit");
             Console.WriteLine("      --delete-profile <n>  Delete a saved profile and exit");
             Console.WriteLine("      --no-save             Do not auto-save connection as _last profile");
+            Console.WriteLine("      --private             Alias for --no-save");
             Console.WriteLine();
             Console.WriteLine("  -h, --help                Show this help and exit");
             Console.WriteLine();
-            Console.WriteLine($"Profiles are stored in: {ProfileManager.ConfigDir}");
+            Console.WriteLine("Startup behaviour:");
+            Console.WriteLine("  No profiles saved   → prompts for all fields");
+            Console.WriteLine("  Only _last (+ pass) → auto-connects (0 interactions)");
+            Console.WriteLine("  Multiple profiles   → shows picker, default = _last [Enter]");
+            Console.WriteLine();
+            Console.WriteLine($"Profiles stored in: {ProfileManager.ConfigDir}");
         }
     }
 }

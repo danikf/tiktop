@@ -73,7 +73,9 @@ GitHub Actions builds `win-x64` and `linux-x64` self-contained binaries automati
 tiktop [options]
 ```
 
-All parameters are optional — any missing value is prompted interactively at startup.
+All parameters are optional — missing values are resolved from saved profiles or prompted interactively.
+
+**Connection:**
 
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
@@ -85,47 +87,97 @@ All parameters are optional — any missing value is prompted interactively at s
 | `--no-ssl` | | SSL on | Use plain (non-SSL) API connection |
 | `--count <n>` | `-n` | auto | Number of connection rows to display |
 | `--dns-server <ip>` | `-d` | system DNS | Custom DNS server for reverse lookups |
-| `--no-save` | | | Do not auto-save connection as `_last` profile |
-| `--help` | `-h` | | Show help and exit |
+
+**Profiles:**
+
+| Option | Description |
+|--------|-------------|
+| `--profile <name>` | Load a saved profile directly (skips picker) |
+| `--pick-profile` | Force profile picker even when auto-connect would fire |
+| `--save-as <name>` | Save current params as a named profile after connecting |
+| `--save-no-pass` | Save profile / auto-save `_last` without the password |
+| `--list-profiles` | List all saved profiles and exit |
+| `--delete-profile <name>` | Delete a saved profile and exit |
+| `--no-save` / `--private` | Do not auto-save this connection as `_last` |
+| `--help` | `-h` | Show help and exit |
 
 ### Examples
 
 ```bash
-# Minimal — prompts for missing values
-tiktop --host 192.168.1.1 --user admin
+# First run — prompts for all values, then saves them as _last
+tiktop
 
-# Fully specified
+# Subsequent runs — zero interactions if _last is complete
+tiktop
+
+# Force profile picker to switch to a different profile
+tiktop --pick-profile
+
+# Load a named profile directly
+tiktop --profile home-router
+
+# Fully specified on CLI
 tiktop -H 192.168.1.1 -u admin -p secret -i "ether1 - WAN"
 
-# Plain API (no SSL), custom DNS server
-tiktop -H 192.168.1.1 -u admin --no-ssl --dns-server 8.8.8.8
-
-# Fixed row count
-tiktop -H 192.168.1.1 -u admin --count 20
+# Save named profile without storing password (will prompt each run)
+tiktop --save-as office --save-no-pass
 ```
 
 ## Connection profiles
 
-tiktop remembers your last connection and supports named profiles so you never have to retype the same parameters.
+tiktop remembers your last connection and supports named profiles so you never have to retype parameters.
 
-### How it works
+### Startup behaviour
 
-- **Last used** — after every successful connection all parameters (including the encrypted password) are automatically saved as `_last`. Next time you run tiktop, values are offered as defaults in brackets:
-  ```
-  Host [192.168.1.1]:        ← press Enter to accept
-  Username [admin]:
-  Password [saved]:          ← press Enter to use saved password
-  ```
-- **Named profiles** — save a profile explicitly with `--save-as`, load it with `--profile`:
-  ```bash
-  tiktop --save-as home-router     # saves after connecting, asks about password
-  tiktop --profile home-router     # loads all fields, no prompts
-  ```
-- **List / delete:**
-  ```bash
-  tiktop --list-profiles
-  tiktop --delete-profile home-router
-  ```
+| Situation | Interactions |
+|-----------|-------------|
+| No profiles saved | Prompts for all fields (first-run experience) |
+| Only `_last` exists, complete + password saved | **0** — auto-connects, prints a one-line status |
+| Only `_last` exists, no password saved | Profile picker (Enter) + password prompt = **2** |
+| Multiple profiles exist | Profile picker, default = `_last` → **1** (+ password if not saved) |
+| `--private` / `--no-save` | Prompts for all fields, nothing saved |
+
+### Profile picker
+
+When multiple profiles are saved (or `_last` is incomplete), tiktop shows a numbered menu:
+
+```
+Profiles:
+  1) _last      192.168.1.1  danik  ether1 - WAN  [pass]
+  2) <NEW>      new connection
+  3) home       192.168.1.1  admin  ether1         [pass]  2026-05-08
+  4) office     10.0.0.1     admin  ether2                  2026-04-15
+Select [1]:
+```
+
+Press **Enter** to accept the default (`_last`), or type a number. `[pass]` means the password is stored and will not be prompted.
+
+### Auto-connect (0 interactions)
+
+If only `_last` exists and is fully complete (host, user, interface, password), tiktop connects immediately:
+
+```
+[_last] 192.168.1.1  danik  ether1 - WAN  (--pick-profile to switch)
+```
+
+Use `--pick-profile` to force the picker anyway (e.g. to switch to a different router).
+
+### Named profiles
+
+```bash
+# Save current connection as a named profile (asks whether to include password)
+tiktop --save-as home-router
+
+# Save without password (will prompt on each use)
+tiktop --save-as home-router --save-no-pass
+
+# Load a named profile directly, bypassing the picker
+tiktop --profile home-router
+
+# List / delete
+tiktop --list-profiles
+tiktop --delete-profile home-router
+```
 
 ### Password security
 
