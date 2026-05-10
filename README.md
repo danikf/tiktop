@@ -5,22 +5,24 @@ A console-based network traffic monitor for MikroTik routers, inspired by `iftop
 Connects to a RouterOS device via the API, streams live traffic data from `/tool/torch`, and renders a real-time top-talkers view with bar charts and moving averages — directly in the terminal.
 
 ```
-                 2.0Mb          4.0Mb          6.0Mb          8.0Mb         10.0Mb
-                 └──────────────┴──────────────┴──────────────┴──────────────┴
-192.168.1.5   => ec2-1-2-3.eu   ████████████░░░░░░░░░░░░░░░░   3.1Mb   3.0Mb   2.8Mb
-              <=                 ██░░░░░░░░░░░░░░░░░░░░░░░░░░   512Kb   490Kb   450Kb
-192.168.1.12  => one.one.one.one ████░░░░░░░░░░░░░░░░░░░░░░░░   1.5Mb   1.4Mb   1.2Mb
-              <=                 █░░░░░░░░░░░░░░░░░░░░░░░░░░░   210Kb   200Kb   190Kb
-────────────────────────────────[ sort:Total | DNS:on | q:quit p:sort r:reset d:dns ±:rows ]
-TX:   cur:   4.6Mb   peak:  10.1Mb    3.1Mb   3.0Mb   2.8Mb
-RX:   cur: 722.0Kb   peak:   2.3Mb  722.0Kb 690.0Kb 640.0Kb
-TOTAL:cur:   5.3Mb   peak:  12.4Mb    3.8Mb   3.7Mb   3.4Mb
+    2.0Mb          4.0Mb          6.0Mb          8.0Mb         10.0Mb
+└──────────────┴──────────────┴──────────────┴──────────────┴──────────────┴
+192.168.1.5   => ec2-1-2-3.eu              3.1Mb   3.0Mb   2.8Mb   5.2Gb
+              <=                           512Kb   490Kb   450Kb   1.1Gb
+192.168.1.12  => one.one.one.one           1.5Mb   1.4Mb   1.2Mb   3.3Gb
+              <=                           210Kb   200Kb   190Kb 820.0Mb
+──────────────────────────[ sort:Total | dns+svc | q p 1-3 r a / d t b B L o f j/k ± ]
+TX:   cur:   4.6Mb   peak:  10.1Mb    3.1Mb   3.0Mb   2.8Mb   6.3Gb
+RX:   cur: 722.0Kb   peak:   2.3Mb  722.0Kb 690.0Kb 640.0Kb   1.9Gb
+TOTAL:cur:   5.3Mb   peak:  12.4Mb    3.8Mb   3.7Mb   3.4Mb   8.2Gb
 ```
+
+*(Traffic level is shown as a colored background spanning the row — green for TX, cyan for RX — with inverted black text on the highlighted portion, iftop-style.)*
 
 ## Features
 
 - **Live top-talkers view** — connections ranked by Total / TX / RX traffic, sortable by current or 2 s / 10 s / 40 s window average
-- **Bar chart** with sub-character precision using Unicode block elements (`█▉▊▋▌▍▎▏░`); footer shows mini-bars for TX / RX / TOTAL
+- **iftop-style background bars** — traffic level shown as a colored background spanning the full row width (green TX, cyan RX); inverted black text on the colored portion. Scale ticks span the full terminal width. Footer TX / RX / TOTAL rows use the same style
 - **Three moving averages** per connection: 2 s, 10 s, 40 s, plus **cumulative total since start** as a 4th column
 - **Linear / logarithmic scale** — toggle with `L` for better visibility of mixed traffic sizes
 - **Reverse DNS lookup** — resolves remote hostnames in the background with TTL cache; cycle between DNS+service, raw IP+port, IP+service modes
@@ -147,7 +149,7 @@ Profiles are stored in:
 | `a` | Cycle aggregation: **None → by-src (local IP) → by-dst (remote IP) → by-port (dst port)**; aggregated rows show `[*]` for wildcard sides; port mode shows service name (https/ssh/rdp…) in remote column |
 | `d` | Cycle address/port display: **dns+svc → ip+port → ip+svc** |
 | `t` | Cycle display mode: **Both → TX only → RX only** (doubles visible connections) |
-| `b` | Toggle bar graphs on/off |
+| `b` | Toggle background bar highlighting on/off |
 | `B` | Toggle bits / bytes (`Mb` ↔ `Mbit`) |
 | `L` | Toggle linear / logarithmic scale |
 | `o` | Freeze row order (positions locked, data still updates; press again to unfreeze) |
@@ -161,21 +163,21 @@ Profiles are stored in:
 ## Display layout
 
 ```
-{scale labels at 20%/40%/60%/80%/100% of peak}
-└────────┴────────┴────────┴────────┴  ← scale bar aligned with chart
+{scale labels at 20%/40%/60%/80%/100% of peak, spanning full width}
+└────────┴────────┴────────┴────────┴────────┴  ← ticks from col 0 to W
 
-{local} => {remote}   ██████░░░░░   {2s avg}  {10s avg}  {40s avg}   ← TX
-          <=           ███░░░░░░░░   {2s avg}  {10s avg}  {40s avg}   ← RX
+{local} => {remote}   {2s avg}  {10s avg}  {40s avg}  {cumul}   ← TX row
+          <=           {2s avg}  {10s avg}  {40s avg}  {cumul}   ← RX row
 ...
-──────────────────────[ sort:Total | DNS:on | status ]
-TX:    cur: {now}   peak: {peak}   {2s}  {10s}  {40s}
-RX:    cur: {now}   peak: {peak}   {2s}  {10s}  {40s}
-TOTAL: cur: {now}   peak: {peak}   {2s}  {10s}  {40s}
+──────────────────────[ sort:Total | dns+svc | status ]
+TX:    cur: {now}   peak: {peak}   {2s}  {10s}  {40s}  {cumul}
+RX:    cur: {now}   peak: {peak}   {2s}  {10s}  {40s}  {cumul}
+TOTAL: cur: {now}   peak: {peak}   {2s}  {10s}  {40s}  {cumul}
 ```
 
-- **Bar scale** is relative to the all-time peak total traffic.
-- **TX bar** (green) shows outgoing traffic from the local side.
-- **RX bar** (cyan) shows incoming traffic to the local side.
+- **Background bar scale** is relative to the all-time peak total traffic. The colored background spans proportionally from the left edge of the terminal across the full row width, including the address text and statistics columns.
+- **TX row** (green background) shows outgoing traffic from the local side.
+- **RX row** (cyan background) shows incoming traffic to the local side.
 - **Local / remote** addresses are determined by comparing against the monitored interface's subnet. If DNS is enabled, hostnames are shown once resolved (long names are intelligently shortened to keep the last two domain components).
 - **Moving averages** use windows of 2 s (last 2 sections), 10 s, and 40 s.
 - The **footer status badge** shows current sort mode and DNS state.
