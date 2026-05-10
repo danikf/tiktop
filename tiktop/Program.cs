@@ -91,10 +91,16 @@ namespace tiktop
                         string scale   = visualiser.LogScale    ? " | log"    : "";
                         string bars    = visualiser.ShowBars    ? ""          : " | no-bars";
                         string bits    = visualiser.BitsMode    ? " | bits"   : "";
+                        string agg     = stack.AggregateMode switch {
+                            AggregateMode.BySrc => " | agg:src",
+                            AggregateMode.ByDst => " | agg:dst",
+                            _                   => "",
+                        };
+                        string scroll  = visualiser.ScrollOffset > 0 ? $" | ↓{visualiser.ScrollOffset}" : "";
                         string freeze  = visualiser.FreezeOrder ? " | frozen" : "";
                         string pause   = visualiser.Paused      ? " | PAUSED" : "";
                         visualiser.SetStatus(
-                            $"sort:{sort} | {resolve}{disp}{scale}{bars}{bits}{freeze}{pause} | q p 1-3 r d t b B L o f ±",
+                            $"sort:{sort} | {resolve}{disp}{scale}{bars}{bits}{agg}{scroll}{freeze}{pause} | q p 1-3 r a d t b B L o f j/k ±",
                             ConsoleColor.Green);
                     }
 
@@ -102,7 +108,7 @@ namespace tiktop
 
                     using var timer = new Timer(_ =>
                     {
-                        var snapshot = stack.CreateSnapshot(visualiser.NrOfItems);
+                        var snapshot = stack.CreateSnapshot(visualiser.NrOfItems + visualiser.ScrollOffset);
                         visualiser.Draw(snapshot);
                     }, null, 0, 1000);
 
@@ -185,6 +191,22 @@ namespace tiktop
                             case ConsoleKey.F:
                             case ConsoleKey.Spacebar:
                                 visualiser.TogglePause();
+                                UpdateStatus();
+                                break;
+
+                            case ConsoleKey.A:
+                                stack.CycleAggregateMode();
+                                visualiser.ResetScroll();
+                                UpdateStatus();
+                                break;
+
+                            case ConsoleKey.J:
+                                visualiser.ScrollDown();
+                                UpdateStatus();
+                                break;
+
+                            case ConsoleKey.K:
+                                visualiser.ScrollUp();
                                 UpdateStatus();
                                 break;
                         }
