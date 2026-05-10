@@ -19,11 +19,15 @@ TOTAL:cur:   5.3Mb   peak:  12.4Mb    3.8Mb   3.7Mb   3.4Mb
 
 ## Features
 
-- **Live top-talkers view** — connections ranked by Total / TX / RX traffic
-- **Bar chart** with sub-character precision using Unicode block elements (`█▉▊▋▌▍▎▏░`)
+- **Live top-talkers view** — connections ranked by Total / TX / RX traffic, sortable by current or 2 s / 10 s / 40 s window average
+- **Bar chart** with sub-character precision using Unicode block elements (`█▉▊▋▌▍▎▏░`); footer shows mini-bars for TX / RX / TOTAL
 - **Three moving averages** per connection: 2 s, 10 s, 40 s
-- **Reverse DNS lookup** — resolves remote hostnames in the background with TTL cache
-- **Interactive keyboard controls** — sort order, DNS toggle, peak reset, row count
+- **Linear / logarithmic scale** — toggle with `L` for better visibility of mixed traffic sizes
+- **Reverse DNS lookup** — resolves remote hostnames in the background with TTL cache; cycle between DNS+service, raw IP+port, IP+service modes
+- **TX / RX display modes** — show both directions or only TX / RX (doubles visible connections)
+- **Bits or bytes** — toggle between `b/Kb/Mb` and `bit/Kbit/Mbit` display
+- **Freeze & pause** — freeze row order to keep stable positions; pause the entire display while data keeps accumulating
+- **Named connection profiles** — auto-saved `_last` + named profiles with encrypted passwords (DPAPI on Windows, AES-GCM on Linux/macOS)
 - **Dynamic layout** — adapts to terminal width and height automatically
 - **Friendly error messages** — connection refused, authentication failure, SSL errors
 - **Cross-platform** — Windows, Linux, macOS (.NET 9+)
@@ -134,9 +138,18 @@ Profiles are stored in:
 |-----|--------|
 | `q` / `Esc` | Quit |
 | `p` | Cycle sort order: **Total → TX → RX** |
+| `1` / `2` / `3` | Sort window: **instant → 2 s avg → 10 s avg → 40 s avg**; status shows `sort:Total/10s` |
 | `r` | Reset all peak values |
-| `d` | Cycle address/port display: **dns+svc → ip+port → ip+svc** (DNS hostname + service name / raw IP + port number / raw IP + service name) |
-| `t` | Cycle display mode: **Both → TX only → RX only** (doubles visible connections in single-direction modes) |
+| `a` | Cycle aggregation: **None → by-src (local IP) → by-dst (remote IP)**; aggregated rows show `[*]` for the wildcard side |
+| `d` | Cycle address/port display: **dns+svc → ip+port → ip+svc** |
+| `t` | Cycle display mode: **Both → TX only → RX only** (doubles visible connections) |
+| `b` | Toggle bar graphs on/off |
+| `B` | Toggle bits / bytes (`Mb` ↔ `Mbit`) |
+| `L` | Toggle linear / logarithmic scale |
+| `o` | Freeze row order (positions locked, data still updates; press again to unfreeze) |
+| `f` / `Space` | Pause / resume display (data keeps accumulating; press again to resume) |
+| `j` | Scroll down one row |
+| `k` | Scroll up one row |
 | `+` | Show one more row |
 | `-` | Show one fewer row |
 

@@ -79,6 +79,22 @@ namespace tiktop.Data
             return result;
         }
 
+        internal DataStackSectionIp GetAggregatedBySrc(string srcAddress)
+        {
+            long tx = 0, rx = 0;
+            foreach (var ip in _ipItems.Values)
+                if (ip.SrcAddress == srcAddress) { tx += ip.Tx; rx += ip.Rx; }
+            return new DataStackSectionIp(srcAddress, "*", "*", "*", rx, tx);
+        }
+
+        internal DataStackSectionIp GetAggregatedByDst(string dstAddress)
+        {
+            long tx = 0, rx = 0;
+            foreach (var ip in _ipItems.Values)
+                if (ip.DstAddress == dstAddress) { tx += ip.Tx; rx += ip.Rx; }
+            return new DataStackSectionIp("*", "*", dstAddress, "*", rx, tx);
+        }
+
         //private void RemoveOldItems(DateTime removeOlderThan)
         //{
         //    for (int i = _ipItems.Count - 1; i >= 0; i--)

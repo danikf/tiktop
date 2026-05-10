@@ -40,6 +40,7 @@ namespace tiktop
         private bool _paused      = false;
         private bool _bitsMode    = false;
         private bool _freezeOrder = false;
+        private int  _scrollOffset = 0;
         private string[]? _frozenOrder = null;
         private DataSnapshot _lastSnapshot = new DataSnapshot(0, 0, 0);
 
@@ -56,6 +57,7 @@ namespace tiktop
         public bool Paused      => _paused;
         public bool BitsMode    => _bitsMode;
         public bool FreezeOrder => _freezeOrder;
+        public int  ScrollOffset => _scrollOffset;
 
         public Visualiser(DnsCache dnsCache)
         {
@@ -93,6 +95,10 @@ namespace tiktop
         public void ToggleBars()       { lock (_lockObj) _showBars    = !_showBars; }
         public void TogglePause()      { lock (_lockObj) _paused      = !_paused; }
         public void ToggleBitsMode()   { lock (_lockObj) _bitsMode    = !_bitsMode; }
+
+        public void ScrollDown() { lock (_lockObj) _scrollOffset++; }
+        public void ScrollUp()   { lock (_lockObj) _scrollOffset = Math.Max(0, _scrollOffset - 1); }
+        public void ResetScroll() { lock (_lockObj) _scrollOffset = 0; }
 
         public void ToggleFreezeOrder()
         {
@@ -146,6 +152,9 @@ namespace tiktop
                             .ToArray();
                     }
                 }
+
+                // Clamp scroll offset to valid range.
+                _scrollOffset = Math.Clamp(_scrollOffset, 0, Math.Max(0, displayItems.Length - 1));
 
                 var (aw, bw) = ComputeLayout();
                 var savedFg = Console.ForegroundColor;
@@ -226,24 +235,43 @@ namespace tiktop
         {
             int row = startRow;
 
-            foreach (var ip in items.Take(cnt))
+            foreach (var ip in items.Skip(_scrollOffset).Take(cnt))
             {
                 bool useDns     = _resolveMode == ResolveMode.DnsService;
                 bool useSvcName = _resolveMode != ResolveMode.IpPort;
+                bool isAgg      = ip.LastSection.SrcPort == "*";
 
-                string local = FormatHelper.ShortenHostname(
-                    (useDns ? _dnsCache.TryGet(ip.LastSection.SrcAddress) : null)
-                    ?? ip.LastSection.SrcAddress, aw);
+                string local;
+                string remote;
+                if (isAgg)
+                {
+                    // Aggregated row: one side has "*" as a wildcard address.
+                    string srcAddr = ip.LastSection.SrcAddress == "*" ? "[*]" : ip.LastSection.SrcAddress;
+                    string dstAddr = ip.LastSection.DstAddress == "*" ? "[*]" : ip.LastSection.DstAddress;
+                    if (useDns)
+                    {
+                        if (srcAddr != "[*]") srcAddr = _dnsCache.TryGet(srcAddr) ?? srcAddr;
+                        if (dstAddr != "[*]") dstAddr = _dnsCache.TryGet(dstAddr) ?? dstAddr;
+                    }
+                    local  = FormatHelper.ShortenHostname(srcAddr, aw);
+                    remote = FormatHelper.ShortenHostname(dstAddr, aw);
+                }
+                else
+                {
+                    local = FormatHelper.ShortenHostname(
+                        (useDns ? _dnsCache.TryGet(ip.LastSection.SrcAddress) : null)
+                        ?? ip.LastSection.SrcAddress, aw);
 
-                // Remote: address + destination port (service name or raw number)
-                string dstHostname = (useDns ? _dnsCache.TryGet(ip.LastSection.DstAddress) : null)
-                                     ?? ip.LastSection.DstAddress;
-                string portSuffix = useSvcName
-                    ? FormatHelper.FormatPort(ip.LastSection.DstPort)
-                    : (string.IsNullOrEmpty(ip.LastSection.DstPort) || ip.LastSection.DstPort == "0"
-                        ? "" : ":" + ip.LastSection.DstPort);
-                string remoteHost = FormatHelper.ShortenHostname(dstHostname, Math.Max(1, aw - portSuffix.Length));
-                string remote     = (remoteHost + portSuffix).SafePrefix(aw);
+                    // Remote: address + destination port (service name or raw number)
+                    string dstHostname = (useDns ? _dnsCache.TryGet(ip.LastSection.DstAddress) : null)
+                                         ?? ip.LastSection.DstAddress;
+                    string portSuffix = useSvcName
+                        ? FormatHelper.FormatPort(ip.LastSection.DstPort)
+                        : (string.IsNullOrEmpty(ip.LastSection.DstPort) || ip.LastSection.DstPort == "0"
+                            ? "" : ":" + ip.LastSection.DstPort);
+                    string remoteHost = FormatHelper.ShortenHostname(dstHostname, Math.Max(1, aw - portSuffix.Length));
+                    remote = (remoteHost + portSuffix).SafePrefix(aw);
+                }
 
                 long txS = (long)ip.ShortRange .Average(s => (double)s.Tx);
                 long txM = (long)ip.MediumRange.Average(s => (double)s.Tx);

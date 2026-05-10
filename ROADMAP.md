@@ -53,13 +53,18 @@ Cílem je konzolová aplikace podobná `iftop`, která se připojí na MikroTik 
 
 ---
 
-### P4 – Pokročilé funkce
+### ✅ P4 – Pokročilé funkce (hotovo)
 
 | # | Funkce | Popis |
 |---|--------|-------|
-| 5 | **Agregace by src/dst (`s`/`d`)** | Seskupit toky ze stejné src nebo na stejnou dst IP do jednoho řádku |
-| 6 | **Scroll (`j`/`k`)** | Scrollovat seznam connections, když je jich více než viditelných řádků |
-| 7 | **Live host filter (`l`)** | Filtrovat zobrazené řádky podle substringu IP/hostname (lokální filtr ve Visualiser) |
+| 5 | **Agregace by src/dst (`a`)** | `a` cykluje: None → BySrc (skupiny dle lokální IP) → ByDst (skupiny dle vzdálené IP); `[*]` indikuje agregovaný řádek |
+| 6 | **Scroll (`j`/`k`)** | `j` scrolluje dolů, `k` nahoru; snapshot automaticky načítá dostatek řádků; offset se zobrazuje ve statusu jako `↓N` |
+
+### P4 – Zbývá
+
+| # | Funkce | Popis |
+|---|--------|-------|
+| 7 | **Live host filter (`/`)** | Filtrovat zobrazené řádky podle substringu IP/hostname (lokální filtr ve Visualiser) |
 | 8 | **Kumulativní celkový přenos** | Vedle průměrů zobrazit celkový objem od spuštění (extra sloupec nebo detail) |
 | 9 | **Port-based grouping** | Seskupit toky podle dst portu – vidět celkový HTTPS/HTTP/SSH traffic agregovaně |
 
@@ -80,11 +85,17 @@ Cílem je konzolová aplikace podobná `iftop`, která se připojí na MikroTik 
 |---------|------|
 | `q` / `Esc` | Ukončit |
 | `p` | Cyklovat řazení: Total → TX → RX |
+| `1` / `2` / `3` | Průměrové okno pro řazení: instant → 2s → 10s → 40s |
 | `r` | Reset peak hodnot |
+| `a` | Cyklovat agregaci: None → BySrc → ByDst |
 | `d` | Cyklovat resolve mode: dns+svc → ip+port → ip+svc |
 | `t` | Cyklovat display: Both → TX-only → RX-only |
 | `b` | Zapnout/vypnout bar grafy |
+| `B` | Přepnout bits / bytes |
 | `L` | Přepnout lineární ↔ logaritmická škála |
+| `o` | Zmrazit pořadí řádků (data se aktualizují) |
+| `f` / `Space` | Pauza / pokračování displeje |
+| `j` / `k` | Scrollovat seznam dolů / nahoru |
 | `+` / `-` | Zvětšit / zmenšit počet zobrazených řádků |
 
 ---
