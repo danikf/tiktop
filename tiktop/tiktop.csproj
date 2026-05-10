@@ -18,9 +18,15 @@
     <PublishTrimmed>false</PublishTrimmed>
   </PropertyGroup>
 
-  <ItemGroup>
+  <!-- Local development: use tik4net source for live editing -->
+  <ItemGroup Condition="'$(CI)' != 'true'">
     <ProjectReference Include="..\..\..\tik4net\tik4net\tik4net\tik4net.csproj" />
     <ProjectReference Include="..\..\..\tik4net\tik4net\tik4net.objects\tik4net.objects.csproj" />
+  </ItemGroup>
+  <!-- CI / standalone build: use published NuGet packages -->
+  <ItemGroup Condition="'$(CI)' == 'true'">
+    <PackageReference Include="tik4net" Version="3.5.0" />
+    <PackageReference Include="tik4net.objects" Version="3.5.0" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="DnsClient" Version="1.8.0" />

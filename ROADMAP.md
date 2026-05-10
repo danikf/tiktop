@@ -70,12 +70,12 @@ Cílem je konzolová aplikace podobná `iftop`, která se připojí na MikroTik 
 
 ---
 
-### P5 – Distribuce (zbývá)
+### ✅ P5 – Distribuce (hotovo)
 
 | # | Funkce | Popis |
 |---|--------|-------|
-| 10 | **Single-file publish** | `dotnet publish -r win-x64/linux-x64 -p:PublishSingleFile=true --self-contained` |
-| 11 | **GitHub Actions CI** | Automatický build win-x64 + linux-x64 při push/release |
+| 10 | **Single-file publish** | `.csproj` má `PublishSingleFile`/`SelfContained` nastavení; csproj podmíněně přepíná ProjectRef↔PackageRef podle `$(CI)` |
+| 11 | **GitHub Actions CI** | `.github/workflows/ci.yml` — matrix win-x64+linux-x64, `dotnet publish` self-contained, upload artifacts; při tagu `v*` vytvoří GitHub Release s binárkami |
 
 ---
 

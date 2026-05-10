@@ -53,13 +53,17 @@ dotnet run -- --host 192.168.1.1 --user admin
 
 ```bash
 # Windows
-dotnet publish -r win-x64 -p:PublishSingleFile=true --self-contained -o publish/win
+dotnet publish tiktop/tiktop.csproj -c Release -r win-x64 -p:PublishSingleFile=true --self-contained -o publish/win
 
-# Linux
-dotnet publish -r linux-x64 -p:PublishSingleFile=true --self-contained -o publish/linux
+# Linux / macOS
+dotnet publish tiktop/tiktop.csproj -c Release -r linux-x64 -p:PublishSingleFile=true --self-contained -o publish/linux
 ```
 
 The result is a single executable with no .NET runtime dependency.
+
+### Pre-built binaries
+
+GitHub Actions builds `win-x64` and `linux-x64` self-contained binaries automatically on every push. Tagged releases (`v*`) publish them as GitHub Release assets — download from the **Releases** page.
 
 ## Usage
 
