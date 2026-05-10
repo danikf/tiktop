@@ -71,39 +71,7 @@ namespace tiktop
 
                     void UpdateStatus()
                     {
-                        string winLabel = stack.SortWindow switch {
-                            SortWindow.Medium => "/10s",
-                            SortWindow.Long   => "/40s",
-                            _                 => "",
-                        };
-                        string sort    = stack.SortMode.ToString() + winLabel;
-                        string resolve = visualiser.ResolveMode switch {
-                            ResolveMode.DnsService => "dns+svc",
-                            ResolveMode.IpPort     => "ip+port",
-                            ResolveMode.IpService  => "ip+svc",
-                            _                      => "?"
-                        };
-                        string disp    = visualiser.DisplayMode switch {
-                            DisplayMode.TxOnly => " | TX-only",
-                            DisplayMode.RxOnly => " | RX-only",
-                            _                  => ""
-                        };
-                        string scale   = visualiser.LogScale    ? " | log"    : "";
-                        string bars    = visualiser.ShowBars    ? ""          : " | no-bars";
-                        string bits    = visualiser.BitsMode    ? " | bits"   : "";
-                        string agg     = stack.AggregateMode switch {
-                            AggregateMode.BySrc  => " | agg:src",
-                            AggregateMode.ByDst  => " | agg:dst",
-                            AggregateMode.ByPort => " | agg:port",
-                            _                    => "",
-                        };
-                        string filter  = !string.IsNullOrEmpty(visualiser.FilterText) ? $" | /{visualiser.FilterText}" : "";
-                        string scroll  = visualiser.ScrollOffset > 0 ? $" | ↓{visualiser.ScrollOffset}" : "";
-                        string freeze  = visualiser.FreezeOrder ? " | frozen" : "";
-                        string pause   = visualiser.Paused      ? " | PAUSED" : "";
-                        visualiser.SetStatus(
-                            $"sort:{sort} | {resolve}{disp}{scale}{bars}{bits}{agg}{filter}{scroll}{freeze}{pause} | q p 1-3 r a / d t b B L o f j/k ±",
-                            ConsoleColor.Green);
+                        visualiser.SetSortState(stack.SortMode, stack.SortWindow, stack.AggregateMode);
                     }
 
                     UpdateStatus();
@@ -252,14 +220,22 @@ namespace tiktop
 
         private static void SaveLastProfile(ConnectionConfig cfg)
         {
-            try { new ProfileManager().Save("_last", cfg, savePassword: true); }
+            try { new ProfileManager().Save("_last", cfg, savePassword: !cfg.SaveNoPass); }
             catch { /* non-fatal */ }
         }
 
         private static void SaveNamedProfile(ConnectionConfig cfg)
         {
-            Console.Write($"Save password in profile '{cfg.SaveAs}'? [y/N]: ");
-            bool savePass = Console.ReadLine()?.Trim().Equals("y", StringComparison.OrdinalIgnoreCase) == true;
+            bool savePass;
+            if (cfg.SaveNoPass)
+            {
+                savePass = false;
+            }
+            else
+            {
+                Console.Write($"Save password in profile '{cfg.SaveAs}'? [y/N]: ");
+                savePass = Console.ReadLine()?.Trim().Equals("y", StringComparison.OrdinalIgnoreCase) == true;
+            }
             try
             {
                 new ProfileManager().Save(cfg.SaveAs!, cfg, savePassword: savePass);

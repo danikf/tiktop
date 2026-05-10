@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -40,6 +41,22 @@ namespace tiktop
 
         public string? LastUsedName => _root.LastUsed;
 
+        // Returns profiles in display order: _last first, then others by SavedAt desc.
+        public List<(string Name, StoredProfile Profile)> GetProfilesSorted()
+        {
+            var result = new List<(string, StoredProfile)>();
+            if (_root.Profiles.TryGetValue("_last", out var last))
+                result.Add(("_last", last));
+
+            var others = _root.Profiles
+                .Where(kvp => kvp.Key != "_last")
+                .OrderByDescending(kvp => kvp.Value.SavedAt ?? DateTime.MinValue)
+                .Select(kvp => (kvp.Key, kvp.Value));
+
+            result.AddRange(others);
+            return result;
+        }
+
         // ── Write ──────────────────────────────────────────────────────────────
 
         public void Save(string name, ConnectionConfig cfg, bool savePassword)
@@ -53,6 +70,7 @@ namespace tiktop
                 UseSsl    = cfg.UseSsl,
                 DnsServer = cfg.DnsServer,
                 Count     = cfg.Count,
+                SavedAt   = DateTime.UtcNow,
                 PasswordProtected = savePassword && !string.IsNullOrEmpty(cfg.Pass)
                     ? Encrypt(cfg.Pass)
                     : null
@@ -172,13 +190,14 @@ namespace tiktop
 
     public class StoredProfile
     {
-        [JsonPropertyName("host")]      public string? Host      { get; set; }
-        [JsonPropertyName("user")]      public string? User      { get; set; }
-        [JsonPropertyName("password")]  public string? PasswordProtected { get; set; }
-        [JsonPropertyName("interface")] public string? Interface { get; set; }
-        [JsonPropertyName("port")]      public int?    Port      { get; set; }
-        [JsonPropertyName("useSsl")]    public bool    UseSsl    { get; set; } = true;
-        [JsonPropertyName("dnsServer")] public string? DnsServer { get; set; }
-        [JsonPropertyName("count")]     public int?    Count     { get; set; }
+        [JsonPropertyName("host")]      public string?   Host              { get; set; }
+        [JsonPropertyName("user")]      public string?   User              { get; set; }
+        [JsonPropertyName("password")]  public string?   PasswordProtected { get; set; }
+        [JsonPropertyName("interface")] public string?   Interface         { get; set; }
+        [JsonPropertyName("port")]      public int?      Port              { get; set; }
+        [JsonPropertyName("useSsl")]    public bool      UseSsl            { get; set; } = true;
+        [JsonPropertyName("dnsServer")] public string?   DnsServer         { get; set; }
+        [JsonPropertyName("count")]     public int?      Count             { get; set; }
+        [JsonPropertyName("savedAt")]   public DateTime? SavedAt           { get; set; }
     }
 }
