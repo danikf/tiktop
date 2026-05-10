@@ -188,15 +188,22 @@ namespace tiktop.Data
                     _                    => k => GetCumulativeByPort(k),
                 };
 
-                // Build per-group aggregated IPs from the last section.
-                var aggIps = lastFinalizedSection.GetAllIps()
-                    .GroupBy(groupKey)
-                    .Select(g =>
+                // Collect unique group keys from the relevant window so that connections
+                // absent in the last section but active within the window still appear.
+                // Current (last-section) values are retrieved via winLookup so they read 0
+                // when the group is absent in that second, while window averages stay stable.
+                var candidateGroupKeys = SortWindow switch {
+                    SortWindow.Medium     => mediumWindow.SelectMany(s => s.GetAllIps().Select(groupKey)).Distinct(),
+                    SortWindow.Long       => longWindow  .SelectMany(s => s.GetAllIps().Select(groupKey)).Distinct(),
+                    SortWindow.Cumulative => longWindow  .SelectMany(s => s.GetAllIps().Select(groupKey)).Distinct(),
+                    _                     => lastFinalizedSection.GetAllIps().Select(groupKey).Distinct(),
+                };
+
+                var aggIps = candidateGroupKeys.Select(k =>
                     {
-                        long tx = g.Sum(ip => ip.Tx);
-                        long rx = g.Sum(ip => ip.Rx);
-                        var agg = makeAgg(g.Key);
-                        agg.Increase(tx, rx);  // set TX/RX (starts at 0)
+                        var current = winLookup(lastFinalizedSection, k);
+                        var agg = makeAgg(k);
+                        agg.Increase(current.Tx, current.Rx);
                         return agg;
                     })
                     .ToArray();
@@ -226,9 +233,9 @@ namespace tiktop.Data
             {
                 IEnumerable<DataStackSectionIp> sortedIps = SortWindow switch
                 {
-                    SortWindow.Medium     => SortByWindowAvg(lastFinalizedSection.GetAllIps(), mediumWindow, SortMode, nrOfItems),
-                    SortWindow.Long       => SortByWindowAvg(lastFinalizedSection.GetAllIps(), longWindow,   SortMode, nrOfItems),
-                    SortWindow.Cumulative => SortByCumulative(lastFinalizedSection.GetAllIps(), _cumulativeIp, SortMode, nrOfItems),
+                    SortWindow.Medium     => SortByWindowAvg(CandidatesFromWindow(mediumWindow), mediumWindow, SortMode, nrOfItems),
+                    SortWindow.Long       => SortByWindowAvg(CandidatesFromWindow(longWindow),   longWindow,   SortMode, nrOfItems),
+                    SortWindow.Cumulative => SortByCumulative(CandidatesFromWindow(longWindow),  _cumulativeIp, SortMode, nrOfItems),
                     _                     => lastFinalizedSection.GetTopIps(nrOfItems, SortMode),
                 };
                 topIpTraffic = sortedIps.Select(i =>
@@ -367,6 +374,21 @@ namespace tiktop.Data
                 return sort switch { SortMode.Tx => tx, SortMode.Rx => rx, _ => tx + rx };
             };
             return candidates.OrderByDescending(key).Take(take).ToArray();
+        }
+
+        // Returns one representative DataStackSectionIp per unique connection seen across
+        // the window, preferring the most recent section so addresses/ports are current.
+        private static DataStackSectionIp[] CandidatesFromWindow(DataStackSection[] window)
+        {
+            var seen = new HashSet<string>();
+            var result = new List<DataStackSectionIp>();
+            for (int i = window.Length - 1; i >= 0; i--)
+                foreach (var ip in window[i].GetAllIps())
+                {
+                    string key = $"{ip.SrcAddress}:{ip.SrcPort}-{ip.DstAddress}:{ip.DstPort}";
+                    if (seen.Add(key)) result.Add(ip);
+                }
+            return result.ToArray();
         }
     }
 }
