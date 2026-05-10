@@ -25,6 +25,7 @@ namespace tiktop
         private readonly object _lockObj = new object();
         private volatile bool _isDisposed = false;
         private bool _firstDraw = true;
+        private bool _helpMode  = false;
 
         // Dirty-row buffer
         private string[] _rowBuf = Array.Empty<string>();
@@ -63,6 +64,7 @@ namespace tiktop
         public bool   FreezeOrder => _freezeOrder;
         public int    ScrollOffset => _scrollOffset;
         public string FilterText   => _filterText;
+        public bool   HelpMode     => _helpMode;
 
         public Visualiser(DnsCache dnsCache)
         {
@@ -124,6 +126,18 @@ namespace tiktop
             }
         }
 
+        public void ToggleHelp()
+        {
+            lock (_lockObj)
+            {
+                _helpMode = !_helpMode;
+                if (_rowBuf.Length > 0) Array.Fill(_rowBuf, null!);
+                // Draw help immediately so the screen updates without waiting for the next timer tick.
+                if (_helpMode && _bufW > 0 && _bufH > 0)
+                    DrawHelp();
+            }
+        }
+
         // ── Main draw ─────────────────────────────────────────────────────────
 
         public void Draw(DataSnapshot data)
@@ -143,6 +157,8 @@ namespace tiktop
                     _bufH = H;
                     _firstDraw = false;
                 }
+
+                if (_helpMode) { DrawHelp(); return; }
 
                 DataSnapshot snap = _paused ? _lastSnapshot : data;
                 if (!_paused) _lastSnapshot = data;
@@ -394,6 +410,117 @@ namespace tiktop
             }
         }
 
+        // ── Help screen ───────────────────────────────────────────────────────
+
+        private static readonly (string Key, string Desc)[][] HelpSections =
+        {
+            // section name is in Key field with empty Desc
+            new[] { ("Sort & data", "") },
+            new[] {
+                ("p",         "cycle sort order: Total → TX → RX"),
+                ("1",         "sort window: 2 s"),
+                ("2",         "sort window: 10 s  (default)"),
+                ("3",         "sort window: 40 s"),
+                ("r",         "reset all peak values"),
+                ("a",         "aggregation: none → by src → by dst → by port"),
+                ("/",         "filter by IP or hostname  (Enter confirm, Esc clear)"),
+            },
+            new[] { ("Display", "") },
+            new[] {
+                ("t",         "direction: TX+RX → TX only → RX only"),
+                ("d",         "addresses: dns+svc → ip+port → ip+svc"),
+                ("b",         "toggle bar chart highlight"),
+                ("B",         "toggle bits / bytes  (Mb ↔ Mbit)"),
+                ("L",         "toggle linear / logarithmic scale"),
+                ("o",         "freeze row order  (data still updates)"),
+            },
+            new[] { ("Navigation", "") },
+            new[] {
+                ("j / k",     "scroll down / up"),
+                ("+ / -",     "more / fewer rows"),
+                ("f / Space", "pause / resume display"),
+                ("q / Esc",   "quit"),
+            },
+        };
+
+        private void DrawHelp()
+        {
+            const string title  = "tiktop — keyboard shortcuts";
+            const string footer = "? or Esc  return to monitor";
+            const int    keyW   = 12; // fixed key column width
+
+            int W = _bufW;
+            int H = _bufH;
+            int row = 0;
+
+            // Centered title
+            string titleLine = title.PadLeft((W + title.Length) / 2).PadRight(W);
+            HelpRow(row++, titleLine, ConsoleColor.White);
+            PlainRow(row++, "");
+
+            foreach (var group in HelpSections)
+            {
+                if (row >= H - 3) break;
+                var (sectionName, noDesc) = group[0];
+
+                if (string.IsNullOrEmpty(noDesc))
+                {
+                    // Section header with trailing dashes
+                    string dashes = new string('─', Math.Max(2, W - sectionName.Length - 5));
+                    HelpRow(row++, $"  {sectionName} {dashes}", ConsoleColor.Yellow);
+                }
+                else
+                {
+                    // Content rows: key in White, description in DarkGray
+                    foreach (var (key, desc) in group)
+                    {
+                        if (row >= H - 3) break;
+                        HelpKeyRow(row++, key, desc, keyW, W);
+                    }
+                    PlainRow(row++, "");
+                }
+            }
+
+            // Footer pinned to second-to-last visible row
+            int footerRow = H - 2;
+            while (row < footerRow) PlainRow(row++, "");
+            HelpRow(row, footer, ConsoleColor.DarkCyan);
+        }
+
+        private void HelpRow(int row, string text, ConsoleColor fg)
+        {
+            if (row >= _bufH - 1) return;
+            string padded = text.SafePrefix(_bufW).PadRight(_bufW);
+            string bufKey = $"h{(int)fg}|{padded}";
+            if (_rowBuf[row] == bufKey) return;
+            _rowBuf[row] = bufKey;
+            Console.SetCursorPosition(0, row);
+            Console.BackgroundColor = ConsoleColor.Black;
+            Console.ForegroundColor = fg;
+            Console.Write(padded);
+            Console.ForegroundColor = ConsoleColor.Gray;
+        }
+
+        private void HelpKeyRow(int row, string key, string desc, int keyW, int W)
+        {
+            if (row >= _bufH - 1) return;
+            string keyPart  = $"  {key.PadRight(keyW)}  ";
+            string descPart = desc.SafePrefix(Math.Max(1, W - keyPart.Length));
+            string bufKey   = $"hk|{keyPart}|{descPart}";
+            if (_rowBuf[row] == bufKey) return;
+            _rowBuf[row] = bufKey;
+            Console.SetCursorPosition(0, row);
+            Console.BackgroundColor = ConsoleColor.Black;
+            Console.ForegroundColor = ConsoleColor.White;
+            Console.Write(keyPart.SafePrefix(W));
+            if (keyPart.Length < W)
+            {
+                Console.ForegroundColor = ConsoleColor.DarkGray;
+                Console.Write(descPart.PadRight(W - keyPart.Length).SafePrefix(W - keyPart.Length));
+            }
+            Console.ForegroundColor = ConsoleColor.Gray;
+        }
+
         // ── Bar length ────────────────────────────────────────────────────────
 
         private int BarLen(long value, long peak)
@@ -489,6 +616,7 @@ namespace tiktop
             // isActive → yellow bg+black fg on key; inactive → dark-gray bg+white fg
             (string key, string val, bool active)[] chips = {
                 ("q",  hints ? " quit"  : "",                              false),
+                ("?",  hints ? " help"  : "",                              false),
                 ("p",  ":" + sortVal,                                      _sortMode != SortMode.Total),
                 ("1",  hints ? ":2s"    : "",                             _sortWindow == SortWindow.Short),
                 ("2",  hints ? ":10s"   : "",                             _sortWindow == SortWindow.Medium),

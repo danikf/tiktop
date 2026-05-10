@@ -88,6 +88,21 @@ namespace tiktop
                         if (!Console.KeyAvailable) continue;
                         var key = Console.ReadKey(intercept: true);
 
+                        // '?' toggles the help overlay
+                        if (key.KeyChar == '?')
+                        {
+                            visualiser.ToggleHelp();
+                            continue;
+                        }
+
+                        // While help is shown: only Esc (close) and Q (quit) are active
+                        if (visualiser.HelpMode)
+                        {
+                            if (key.Key == ConsoleKey.Escape) visualiser.ToggleHelp();
+                            else if (key.Key == ConsoleKey.Q) goto exitLoop;
+                            continue;
+                        }
+
                         // Filter input mode: '/' opens inline filter, Enter confirms, Esc clears.
                         if (key.KeyChar == '/')
                         {
