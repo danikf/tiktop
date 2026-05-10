@@ -21,7 +21,7 @@ TOTAL:cur:   5.3Mb   peak:  12.4Mb    3.8Mb   3.7Mb   3.4Mb
 
 - **Live top-talkers view** — connections ranked by Total / TX / RX traffic, sortable by current or 2 s / 10 s / 40 s window average
 - **Bar chart** with sub-character precision using Unicode block elements (`█▉▊▋▌▍▎▏░`); footer shows mini-bars for TX / RX / TOTAL
-- **Three moving averages** per connection: 2 s, 10 s, 40 s
+- **Three moving averages** per connection: 2 s, 10 s, 40 s, plus **cumulative total since start** as a 4th column
 - **Linear / logarithmic scale** — toggle with `L` for better visibility of mixed traffic sizes
 - **Reverse DNS lookup** — resolves remote hostnames in the background with TTL cache; cycle between DNS+service, raw IP+port, IP+service modes
 - **TX / RX display modes** — show both directions or only TX / RX (doubles visible connections)
