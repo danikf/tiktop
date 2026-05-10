@@ -196,6 +196,12 @@ namespace tiktop
                                 UpdateStatus();
                                 break;
 
+                            case ConsoleKey.D4:
+                            case ConsoleKey.NumPad4:
+                                stack.SetSortWindow(SortWindow.Cumulative);
+                                UpdateStatus();
+                                break;
+
                             case ConsoleKey.O:
                                 visualiser.ToggleFreezeOrder();
                                 UpdateStatus();

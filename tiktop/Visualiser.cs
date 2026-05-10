@@ -188,7 +188,8 @@ namespace tiktop
                 try
                 {
                     int row = DrawHeader(snap, aw, 0);
-                    DrawItems(displayItems, snap.PeakTotal, NrOfItems, aw, row);
+                    long barPeak = _sortWindow == SortWindow.Cumulative ? snap.CumulativeTotal : snap.PeakTotal;
+                    DrawItems(displayItems, barPeak, NrOfItems, aw, row);
                     DrawFooter(snap, aw, _bufH - footerHeight);
                 }
                 finally
@@ -333,8 +334,18 @@ namespace tiktop
                 long rxL = (long)ip.LongRange  .Average(s => (double)s.Rx);
 
                 // Bar length reflects the same window used for sorting
-                long txBar = _sortWindow switch { SortWindow.Short => txS, SortWindow.Long => txL, _ => txM };
-                long rxBar = _sortWindow switch { SortWindow.Short => rxS, SortWindow.Long => rxL, _ => rxM };
+                long txBar = _sortWindow switch {
+                    SortWindow.Short      => txS,
+                    SortWindow.Long       => txL,
+                    SortWindow.Cumulative => ip.CumulativeTx,
+                    _                     => txM,
+                };
+                long rxBar = _sortWindow switch {
+                    SortWindow.Short      => rxS,
+                    SortWindow.Long       => rxL,
+                    SortWindow.Cumulative => ip.CumulativeRx,
+                    _                     => rxM,
+                };
 
                 string txPfx = $"{local.PadRight(aw)} => {remote.PadRight(aw)} ";
                 string rxPfx = $"{"".PadRight(aw)} <= {"".PadRight(aw)} ";
@@ -433,6 +444,7 @@ namespace tiktop
                 ("1",         "sort window: 2 s"),
                 ("2",         "sort window: 10 s  (default)"),
                 ("3",         "sort window: 40 s"),
+                ("4",         "sort window: cumulative total since start"),
                 ("r",         "reset all peak values"),
                 ("a",         "aggregation: none → by src → by dst → by port"),
                 ("/",         "filter by IP or hostname  (Enter confirm, Esc clear)"),
@@ -640,6 +652,7 @@ namespace tiktop
                 ("1",  hints ? ":2s"    : "",                             _sortWindow == SortWindow.Short),
                 ("2",  hints ? ":10s"   : "",                             _sortWindow == SortWindow.Medium),
                 ("3",  hints ? ":40s"   : "",                             _sortWindow == SortWindow.Long),
+                ("4",  hints ? ":∑"     : "",                             _sortWindow == SortWindow.Cumulative),
                 ("r",  hints ? " reset" : "",                              false),
                 ("a",  aggVal,                                             _aggregateMode != AggregateMode.None),
                 ("/",  filtVal,                                            !string.IsNullOrEmpty(_filterText)),
