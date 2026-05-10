@@ -23,7 +23,7 @@ namespace tiktop
         public bool    NoSave       { get; private set; }
         /// <summary>When true, auto-save and --save-as omit the password.</summary>
         public bool    SaveNoPass   { get; private set; }
-        /// <summary>When true, always show the profile picker (skip 0-interaction auto-connect).</summary>
+        /// <summary>When true, always show the profile picker (skip the _last shortcut path).</summary>
         public bool    PickProfile  { get; private set; }
 
         public int ResolvedPort => Port ?? (UseSsl ? 8729 : 8728);
@@ -138,7 +138,7 @@ namespace tiktop
                 return;
             }
 
-            // 0-interaction path: only _last exists, is complete with saved password
+            // 1-interaction path: only _last exists, is complete with saved password
             if (!cfg.PickProfile && sorted.Count == 1 && sorted[0].Name == "_last")
             {
                 var last = sorted[0].Profile;
@@ -147,11 +147,8 @@ namespace tiktop
                     cfg.ApplyProfile(last, applyPassword: true);
                     if (!string.IsNullOrEmpty(cfg.Pass))
                     {
-                        Console.ForegroundColor = ConsoleColor.DarkGray;
-                        Console.WriteLine(
-                            $"[_last] {cfg.Host}  {cfg.User}  {cfg.Interface}" +
-                            "  (--pick-profile to switch)");
-                        Console.ResetColor();
+                        Console.Write($"Connect: {cfg.Host}  {cfg.User}  {cfg.Interface}  [Enter] ");
+                        Console.ReadLine();
                         return;
                     }
                     // Decryption failed: fall through to prompt
@@ -409,7 +406,7 @@ namespace tiktop
             Console.WriteLine();
             Console.WriteLine("Startup behaviour:");
             Console.WriteLine("  No profiles saved   → prompts for all fields");
-            Console.WriteLine("  Only _last (+ pass) → auto-connects (0 interactions)");
+            Console.WriteLine("  Only _last (+ pass) → confirm with Enter (1 interaction)");
             Console.WriteLine("  Multiple profiles   → shows picker, default = _last [Enter]");
             Console.WriteLine();
             Console.WriteLine($"Profiles stored in: {ProfileManager.ConfigDir}");
