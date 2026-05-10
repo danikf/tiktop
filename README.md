@@ -148,6 +148,7 @@ Profiles are stored in:
 | `L` | Toggle linear / logarithmic scale |
 | `o` | Freeze row order (positions locked, data still updates; press again to unfreeze) |
 | `f` / `Space` | Pause / resume display (data keeps accumulating; press again to resume) |
+| `/` | Open inline filter — type a substring of IP or hostname, `Enter` confirms, `Esc` or `/` clears; active filter shown as `/text` in status |
 | `j` | Scroll down one row |
 | `k` | Scroll up one row |
 | `+` | Show one more row |

@@ -35,12 +35,13 @@ namespace tiktop
         private ResolveMode _resolveMode = ResolveMode.DnsService;
         private int? _countOverride;
         private DisplayMode _displayMode = DisplayMode.Both;
-        private bool _logScale    = false;
-        private bool _showBars    = true;
-        private bool _paused      = false;
-        private bool _bitsMode    = false;
-        private bool _freezeOrder = false;
-        private int  _scrollOffset = 0;
+        private bool   _logScale    = false;
+        private bool   _showBars    = true;
+        private bool   _paused      = false;
+        private bool   _bitsMode    = false;
+        private bool   _freezeOrder = false;
+        private int    _scrollOffset = 0;
+        private string _filterText  = "";
         private string[]? _frozenOrder = null;
         private DataSnapshot _lastSnapshot = new DataSnapshot(0, 0, 0);
 
@@ -56,8 +57,9 @@ namespace tiktop
         public bool ShowBars    => _showBars;
         public bool Paused      => _paused;
         public bool BitsMode    => _bitsMode;
-        public bool FreezeOrder => _freezeOrder;
-        public int  ScrollOffset => _scrollOffset;
+        public bool   FreezeOrder => _freezeOrder;
+        public int    ScrollOffset => _scrollOffset;
+        public string FilterText   => _filterText;
 
         public Visualiser(DnsCache dnsCache)
         {
@@ -99,6 +101,11 @@ namespace tiktop
         public void ScrollDown() { lock (_lockObj) _scrollOffset++; }
         public void ScrollUp()   { lock (_lockObj) _scrollOffset = Math.Max(0, _scrollOffset - 1); }
         public void ResetScroll() { lock (_lockObj) _scrollOffset = 0; }
+
+        public void SetFilter(string text)
+        {
+            lock (_lockObj) { _filterText = text; _scrollOffset = 0; }
+        }
 
         public void ToggleFreezeOrder()
         {
@@ -231,11 +238,28 @@ namespace tiktop
 
         // ── Items ─────────────────────────────────────────────────────────────
 
+        private bool MatchesFilter(DataSnapshotIpRow row)
+        {
+            if (string.IsNullOrEmpty(_filterText)) return true;
+            var ip = row.LastSection;
+            if (ip.SrcAddress.Contains(_filterText, StringComparison.OrdinalIgnoreCase)) return true;
+            if (ip.DstAddress.Contains(_filterText, StringComparison.OrdinalIgnoreCase)) return true;
+            var h = _dnsCache.TryGet(ip.DstAddress);
+            if (h != null && h.Contains(_filterText, StringComparison.OrdinalIgnoreCase)) return true;
+            var hs = _dnsCache.TryGet(ip.SrcAddress);
+            if (hs != null && hs.Contains(_filterText, StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
+
         private void DrawItems(DataSnapshotIpRow[] items, long peak, int cnt, int aw, int bw, int startRow)
         {
             int row = startRow;
 
-            foreach (var ip in items.Skip(_scrollOffset).Take(cnt))
+            var visible = string.IsNullOrEmpty(_filterText)
+                ? items
+                : items.Where(MatchesFilter).ToArray();
+
+            foreach (var ip in visible.Skip(_scrollOffset).Take(cnt))
             {
                 bool useDns     = _resolveMode == ResolveMode.DnsService;
                 bool useSvcName = _resolveMode != ResolveMode.IpPort;
