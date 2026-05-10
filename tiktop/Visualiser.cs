@@ -23,6 +23,7 @@ namespace tiktop
 
         private readonly DnsCache _dnsCache;
         private readonly object _lockObj = new object();
+        private readonly StringBuilder _frame = new(8192);
         private volatile bool _isDisposed = false;
         private bool _firstDraw = true;
         private bool _helpMode  = false;
@@ -69,6 +70,7 @@ namespace tiktop
         public Visualiser(DnsCache dnsCache)
         {
             _dnsCache = dnsCache;
+            AnsiHelper.EnableVT();
             Console.CursorVisible = false;
         }
 
@@ -134,7 +136,11 @@ namespace tiktop
                 if (_rowBuf.Length > 0) Array.Fill(_rowBuf, null!);
                 // Draw help immediately so the screen updates without waiting for the next timer tick.
                 if (_helpMode && _bufW > 0 && _bufH > 0)
+                {
+                    _frame.Clear();
                     DrawHelp();
+                    FlushFrame();
+                }
             }
         }
 
@@ -158,7 +164,9 @@ namespace tiktop
                     _firstDraw = false;
                 }
 
-                if (_helpMode) { DrawHelp(); return; }
+                _frame.Clear();
+
+                if (_helpMode) { DrawHelp(); FlushFrame(); return; }
 
                 DataSnapshot snap = _paused ? _lastSnapshot : data;
                 if (!_paused) _lastSnapshot = data;
@@ -183,21 +191,19 @@ namespace tiktop
                 _scrollOffset = Math.Clamp(_scrollOffset, 0, Math.Max(0, displayItems.Length - 1));
 
                 int aw = ComputeLayout();
-                var savedFg = Console.ForegroundColor;
-                var savedBg = Console.BackgroundColor;
-                try
-                {
-                    int row = DrawHeader(snap, aw, 0);
-                    long barPeak = _sortWindow == SortWindow.Cumulative ? snap.CumulativeTotal : snap.PeakTotal;
-                    DrawItems(displayItems, barPeak, NrOfItems, aw, row);
-                    DrawFooter(snap, aw, _bufH - footerHeight);
-                }
-                finally
-                {
-                    Console.ForegroundColor = savedFg;
-                    Console.BackgroundColor = savedBg;
-                }
+                int row = DrawHeader(snap, aw, 0);
+                long barPeak = _sortWindow == SortWindow.Cumulative ? snap.CumulativeTotal : snap.PeakTotal;
+                DrawItems(displayItems, barPeak, NrOfItems, aw, row);
+                DrawFooter(snap, aw, _bufH - footerHeight);
+
+                FlushFrame();
             }
+        }
+
+        private void FlushFrame()
+        {
+            if (_frame.Length > 0)
+                Console.Out.Write(_frame);
         }
 
         private static string GetRowKey(DataSnapshotIpRow r) =>
@@ -397,15 +403,17 @@ namespace tiktop
             if (row < _bufH && _rowBuf[row] != sepKey)
             {
                 _rowBuf[row] = sepKey;
-                Console.SetCursorPosition(0, row);
-                Console.Write(dashes.SafePrefix(W));
+                AnsiHelper.AppendMove(_frame, row);
+                _frame.Append(AnsiHelper.Fg(ConsoleColor.Gray));
+                _frame.Append(AnsiHelper.Bg(ConsoleColor.Black));
+                _frame.Append(dashes.SafePrefix(W));
                 int col = dashes.Length;
                 if (col < W)
                 {
-                    Console.ForegroundColor = badgeColor;
-                    Console.Write(badge.SafePrefix(W - col));
-                    Console.ForegroundColor = ConsoleColor.Gray;
+                    _frame.Append(AnsiHelper.Fg(badgeColor));
+                    _frame.Append(badge.SafePrefix(W - col));
                 }
+                _frame.Append(AnsiHelper.Reset);
             }
             row++;
 
@@ -519,11 +527,11 @@ namespace tiktop
             string bufKey = $"h{(int)fg}|{padded}";
             if (_rowBuf[row] == bufKey) return;
             _rowBuf[row] = bufKey;
-            Console.SetCursorPosition(0, row);
-            Console.BackgroundColor = ConsoleColor.Black;
-            Console.ForegroundColor = fg;
-            Console.Write(padded);
-            Console.ForegroundColor = ConsoleColor.Gray;
+            AnsiHelper.AppendMove(_frame, row);
+            _frame.Append(AnsiHelper.Bg(ConsoleColor.Black));
+            _frame.Append(AnsiHelper.Fg(fg));
+            _frame.Append(padded);
+            _frame.Append(AnsiHelper.Reset);
         }
 
         private void HelpKeyRow(int row, string key, string desc, int keyW, int W)
@@ -535,16 +543,16 @@ namespace tiktop
             string bufKey   = $"hk|{keyPart}|{descPart}";
             if (_rowBuf[row] == bufKey) return;
             _rowBuf[row] = bufKey;
-            Console.SetCursorPosition(0, row);
-            Console.BackgroundColor = ConsoleColor.Black;
-            Console.ForegroundColor = ConsoleColor.White;
-            Console.Write(keyPart.SafePrefix(W));
+            AnsiHelper.AppendMove(_frame, row);
+            _frame.Append(AnsiHelper.Bg(ConsoleColor.Black));
+            _frame.Append(AnsiHelper.Fg(ConsoleColor.White));
+            _frame.Append(keyPart.SafePrefix(W));
             if (keyPart.Length < W)
             {
-                Console.ForegroundColor = ConsoleColor.DarkGray;
-                Console.Write(descPart.PadRight(W - keyPart.Length).SafePrefix(W - keyPart.Length));
+                _frame.Append(AnsiHelper.Fg(ConsoleColor.DarkGray));
+                _frame.Append(descPart.PadRight(W - keyPart.Length).SafePrefix(W - keyPart.Length));
             }
-            Console.ForegroundColor = ConsoleColor.Gray;
+            _frame.Append(AnsiHelper.Reset);
         }
 
         // ── Bar length ────────────────────────────────────────────────────────
@@ -570,8 +578,11 @@ namespace tiktop
             string padded = content.SafePrefix(W).PadRight(W);
             if (_rowBuf[row] == padded) return;
             _rowBuf[row] = padded;
-            Console.SetCursorPosition(0, row);
-            Console.Write(padded);
+            AnsiHelper.AppendMove(_frame, row);
+            _frame.Append(AnsiHelper.Fg(ConsoleColor.Gray));
+            _frame.Append(AnsiHelper.Bg(ConsoleColor.Black));
+            _frame.Append(padded);
+            _frame.Append(AnsiHelper.Reset);
         }
 
         // Row with a single uniform foreground color (no background).
@@ -583,10 +594,11 @@ namespace tiktop
             string key    = $"{(int)fg}|{padded}";
             if (_rowBuf[row] == key) return;
             _rowBuf[row] = key;
-            Console.SetCursorPosition(0, row);
-            Console.ForegroundColor = fg;
-            Console.Write(padded);
-            Console.ForegroundColor = ConsoleColor.Gray;
+            AnsiHelper.AppendMove(_frame, row);
+            _frame.Append(AnsiHelper.Bg(ConsoleColor.Black));
+            _frame.Append(AnsiHelper.Fg(fg));
+            _frame.Append(padded);
+            _frame.Append(AnsiHelper.Reset);
         }
 
         // Row with background color covering the first barLen columns (iftop style).
@@ -599,23 +611,21 @@ namespace tiktop
             string key    = $"bg{barLen}|{(int)barColor}|{padded}";
             if (_rowBuf[row] == key) return;
             _rowBuf[row] = key;
-            Console.SetCursorPosition(0, row);
-
+            AnsiHelper.AppendMove(_frame, row);
             int fill = Math.Clamp(barLen, 0, W);
             if (fill > 0)
             {
-                Console.BackgroundColor = barColor;
-                Console.ForegroundColor = ConsoleColor.Black;
-                Console.Write(padded[..fill]);
+                _frame.Append(AnsiHelper.Bg(barColor));
+                _frame.Append(AnsiHelper.Fg(ConsoleColor.Black));
+                _frame.Append(padded, 0, fill);
             }
             if (fill < W)
             {
-                Console.BackgroundColor = ConsoleColor.Black;
-                Console.ForegroundColor = barColor;
-                Console.Write(padded[fill..]);
+                _frame.Append(AnsiHelper.Bg(ConsoleColor.Black));
+                _frame.Append(AnsiHelper.Fg(barColor));
+                _frame.Append(padded, fill, W - fill);
             }
-            Console.BackgroundColor = ConsoleColor.Black;
-            Console.ForegroundColor = ConsoleColor.Gray;
+            _frame.Append(AnsiHelper.Reset);
         }
 
         // ── Controls row ──────────────────────────────────────────────────────
@@ -674,7 +684,7 @@ namespace tiktop
             if (_rowBuf[row] == dirtyKey) return;
             _rowBuf[row] = dirtyKey;
 
-            Console.SetCursorPosition(0, row);
+            AnsiHelper.AppendMove(_frame, row);
             int col = 0;
 
             foreach (var (key, val, active) in chips)
@@ -682,23 +692,23 @@ namespace tiktop
                 if (col + 1 + key.Length > W) break;
 
                 // Leading space
-                Console.BackgroundColor = ConsoleColor.Black;
-                Console.ForegroundColor = ConsoleColor.Gray;
-                Console.Write(' ');
+                _frame.Append(AnsiHelper.Bg(ConsoleColor.Black));
+                _frame.Append(AnsiHelper.Fg(ConsoleColor.Gray));
+                _frame.Append(' ');
                 col++;
 
                 // Key letter
-                Console.BackgroundColor = active ? ConsoleColor.Yellow   : ConsoleColor.DarkGray;
-                Console.ForegroundColor = active ? ConsoleColor.Black    : ConsoleColor.White;
-                Console.Write(key);
+                _frame.Append(AnsiHelper.Bg(active ? ConsoleColor.Yellow   : ConsoleColor.DarkGray));
+                _frame.Append(AnsiHelper.Fg(active ? ConsoleColor.Black    : ConsoleColor.White));
+                _frame.Append(key);
                 col += key.Length;
 
                 // Value / hint text
                 if (val.Length > 0 && col + val.Length < W)
                 {
-                    Console.BackgroundColor = ConsoleColor.Black;
-                    Console.ForegroundColor = active ? ConsoleColor.Yellow : ConsoleColor.DarkGray;
-                    Console.Write(val);
+                    _frame.Append(AnsiHelper.Bg(ConsoleColor.Black));
+                    _frame.Append(AnsiHelper.Fg(active ? ConsoleColor.Yellow : ConsoleColor.DarkGray));
+                    _frame.Append(val);
                     col += val.Length;
                 }
             }
@@ -706,20 +716,19 @@ namespace tiktop
             // Pad to end of row
             if (col < W)
             {
-                Console.BackgroundColor = ConsoleColor.Black;
-                Console.ForegroundColor = ConsoleColor.Gray;
-                Console.Write(new string(' ', W - col));
+                _frame.Append(AnsiHelper.Bg(ConsoleColor.Black));
+                _frame.Append(AnsiHelper.Fg(ConsoleColor.Gray));
+                _frame.Append(' ', W - col);
             }
 
-            Console.BackgroundColor = ConsoleColor.Black;
-            Console.ForegroundColor = ConsoleColor.Gray;
+            _frame.Append(AnsiHelper.Reset);
         }
 
         public void Dispose()
         {
             lock (_lockObj)
             {
-                Console.BackgroundColor = ConsoleColor.Black;
+                Console.Out.Write(AnsiHelper.Reset);
                 Console.CursorVisible = true;
                 _isDisposed = true;
             }
