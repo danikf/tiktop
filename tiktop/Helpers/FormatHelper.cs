@@ -8,10 +8,14 @@ namespace tiktop.Helpers
 {
     public static class FormatHelper
     {
-        public static string FormatTraffic(long bps, bool bits = false, bool padRight = false)
+        // isRate=true  → append "s" to unit (e.g. "MBs" = MB/s) for per-second columns
+        // isRate=false → plain unit (e.g. "MB")  for cumulative total column
+        public static string FormatTraffic(long bps, bool bits = false, bool padRight = false, bool isRate = true)
         {
             double tmpNr = bits ? bps * 8.0 : bps;
-            string[] sizes = { "b", "Kb", "Mb", "Gb", "Tb" };
+            string[] sizes = bits
+                ? new[] { "b", "Kb", "Mb", "Gb", "Tb" }
+                : new[] { "B", "KB", "MB", "GB", "TB" };
             int order = 0;
             while (tmpNr >= 1024 && order < sizes.Length - 1)
             {
@@ -19,11 +23,15 @@ namespace tiktop.Helpers
                 tmpNr /= 1024;
             }
 
-            string result = tmpNr.ToString().SafePrefix(4) + sizes[order];
+            string unit   = sizes[order] + (isRate ? "s" : "");
+            // Fill all available chars with digits so PadLeft never adds a leading space
+            // that would make the column width appear inconsistent across rows.
+            int    numLen = 7 - unit.Length;
+            string result = tmpNr.ToString($"F{numLen - 2}").SafePrefix(numLen) + unit;
             if (padRight)
-                return result.PadRight(6);
+                return result.PadRight(7);
             else
-                return result.PadLeft(6);
+                return result.PadLeft(7);
         }
 
         //public static long BpsFromMikrotikFormat(string bps)
@@ -43,7 +51,7 @@ namespace tiktop.Helpers
             var parts = name.Split('.');
             if (parts.Length >= 2)
             {
-                var suffix = "\u2026" + parts[^2] + "." + parts[^1];   // "…second-to-last.last"
+                var suffix = ">" + parts[^2] + "." + parts[^1];   // "…second-to-last.last"
                 if (suffix.Length <= maxLen) return suffix;
             }
 

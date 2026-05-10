@@ -206,11 +206,11 @@ namespace tiktop
         // ── Layout ────────────────────────────────────────────────────────────
 
         // Row: {local:<aw>} => {remote+port:<aw>} <padding> {avg2s} {avg10s} {avg40s} {cumul}
-        // Fixed content: 2*aw + 5 + 31 = 2*aw + 36; remaining W - 2*aw - 36 chars are padding
+        // Fixed content: 2*aw + 5 + 35 = 2*aw + 40; remaining W - 2*aw - 40 chars are padding
         // (background color covers full width proportionally, including padding and sfx)
         private int ComputeLayout()
         {
-            return Math.Max(10, Math.Min(35, (_bufW - 36) / 2));
+            return Math.Max(10, Math.Min(35, (_bufW - 40) / 2));
         }
 
         // ── Header ────────────────────────────────────────────────────────────
@@ -251,7 +251,7 @@ namespace tiktop
 
             // Row 2: column header  (address labels left, value labels right)
             string colSfx = $" {"2s",7}  {"10s",7}  {"40s",7}  {"total",7}";
-            string colPfx = $"{"local".PadRight(aw)} ──  {"remote".PadRight(aw)} ";
+            string colPfx = $"{"local".PadRight(aw)} ── {"remote".PadRight(aw)} ";
             string colHdr = colPfx.PadRight(W - colSfx.Length) + colSfx;
             TintedRow(startRow + 2, colHdr, ConsoleColor.DarkGray);
 
@@ -347,8 +347,8 @@ namespace tiktop
                     _                     => rxM,
                 };
 
-                string txPfx = $"{local.PadRight(aw)} => {remote.PadRight(aw)} ";
-                string rxPfx = $"{"".PadRight(aw)} <= {"".PadRight(aw)} ";
+                string txPfx = $"{local.PadRight(aw)} <= {remote.PadRight(aw)} ";
+                string rxPfx = $"{"".PadRight(aw)} => {"".PadRight(aw)} ";
                 string txSfx = Sfx(txS, txM, txL, ip.CumulativeTx);
                 string rxSfx = Sfx(rxS, rxM, rxL, ip.CumulativeRx);
 
@@ -378,7 +378,7 @@ namespace tiktop
         }
 
         private string Sfx(long a, long b, long c, long cum) =>
-            $" {FormatHelper.FormatTraffic(a, _bitsMode)}  {FormatHelper.FormatTraffic(b, _bitsMode)}  {FormatHelper.FormatTraffic(c, _bitsMode)}  {FormatHelper.FormatTraffic(cum, _bitsMode)}";
+            $" {FormatHelper.FormatTraffic(a, _bitsMode)}  {FormatHelper.FormatTraffic(b, _bitsMode)}  {FormatHelper.FormatTraffic(c, _bitsMode)}  {FormatHelper.FormatTraffic(cum, _bitsMode, isRate: false)}";
 
         // ── Footer ────────────────────────────────────────────────────────────
 
