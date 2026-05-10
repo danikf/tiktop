@@ -26,14 +26,17 @@ namespace tiktop.Data
         {
             var key = ConstructKey(srcAddress, srcPort, dstAddress, dstPort);
 
-            if (!_ipItems.TryGetValue(key, out var ipItem))
+            lock (_ipItems)
             {
-                ipItem = new DataStackSectionIp(srcAddress, srcPort, dstAddress, dstPort, tx, rx);
-                _ipItems.Add(key, ipItem);
-            }
-            else
-            {
-                ipItem.Increase(tx, rx);
+                if (!_ipItems.TryGetValue(key, out var ipItem))
+                {
+                    ipItem = new DataStackSectionIp(srcAddress, srcPort, dstAddress, dstPort, tx, rx);
+                    _ipItems.Add(key, ipItem);
+                }
+                else
+                {
+                    ipItem.Increase(tx, rx);
+                }
             }
         }
 
@@ -52,40 +55,49 @@ namespace tiktop.Data
                 SortMode.Rx => i => i.Rx,
                 _           => i => i.Total,
             };
-            return _ipItems.Values.OrderByDescending(key).Take(nrOfItems);
+            lock (_ipItems)
+                return _ipItems.Values.OrderByDescending(key).Take(nrOfItems).ToArray();
         }
 
-        internal IEnumerable<DataStackSectionIp> GetAllIps() => _ipItems.Values;
+        internal DataStackSectionIp[] GetAllIps()
+        {
+            lock (_ipItems)
+                return _ipItems.Values.ToArray();
+        }
 
         internal DataStackSectionIp GetIpTraffic(DataStackSectionIp ip)
         {
             var key = ConstructKey(ip.SrcAddress, ip.SrcPort, ip.DstAddress, ip.DstPort);
-            return _ipItems.TryGetValue(key, out var result)
-                ? result
-                : new DataStackSectionIp(ip.SrcAddress, ip.SrcPort, ip.DstAddress, ip.DstPort, 0, 0);
+            lock (_ipItems)
+                return _ipItems.TryGetValue(key, out var result)
+                    ? result
+                    : new DataStackSectionIp(ip.SrcAddress, ip.SrcPort, ip.DstAddress, ip.DstPort, 0, 0);
         }
 
         internal DataStackSectionIp GetAggregatedBySrc(string srcAddress)
         {
             long tx = 0, rx = 0;
-            foreach (var ip in _ipItems.Values)
-                if (ip.SrcAddress == srcAddress) { tx += ip.Tx; rx += ip.Rx; }
+            lock (_ipItems)
+                foreach (var ip in _ipItems.Values)
+                    if (ip.SrcAddress == srcAddress) { tx += ip.Tx; rx += ip.Rx; }
             return new DataStackSectionIp(srcAddress, "*", "*", "*", tx, rx);
         }
 
         internal DataStackSectionIp GetAggregatedByDst(string dstAddress)
         {
             long tx = 0, rx = 0;
-            foreach (var ip in _ipItems.Values)
-                if (ip.DstAddress == dstAddress) { tx += ip.Tx; rx += ip.Rx; }
+            lock (_ipItems)
+                foreach (var ip in _ipItems.Values)
+                    if (ip.DstAddress == dstAddress) { tx += ip.Tx; rx += ip.Rx; }
             return new DataStackSectionIp("*", "*", dstAddress, "*", tx, rx);
         }
 
         internal DataStackSectionIp GetAggregatedByPort(string dstPort)
         {
             long tx = 0, rx = 0;
-            foreach (var ip in _ipItems.Values)
-                if (ip.DstPort == dstPort) { tx += ip.Tx; rx += ip.Rx; }
+            lock (_ipItems)
+                foreach (var ip in _ipItems.Values)
+                    if (ip.DstPort == dstPort) { tx += ip.Tx; rx += ip.Rx; }
             return new DataStackSectionIp("*", "*", "*", dstPort, tx, rx);
         }
 
