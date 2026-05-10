@@ -332,6 +332,10 @@ namespace tiktop
                 long rxM = (long)ip.MediumRange.Average(s => (double)s.Rx);
                 long rxL = (long)ip.LongRange  .Average(s => (double)s.Rx);
 
+                // Bar length reflects the same window used for sorting
+                long txBar = _sortWindow switch { SortWindow.Short => txS, SortWindow.Long => txL, _ => txM };
+                long rxBar = _sortWindow switch { SortWindow.Short => rxS, SortWindow.Long => rxL, _ => rxM };
+
                 string txPfx = $"{local.PadRight(aw)} => {remote.PadRight(aw)} ";
                 string rxPfx = $"{"".PadRight(aw)} <= {"".PadRight(aw)} ";
                 string txSfx = Sfx(txS, txM, txL, ip.CumulativeTx);
@@ -344,14 +348,14 @@ namespace tiktop
                 if (_displayMode != DisplayMode.RxOnly)
                 {
                     if (_showBars)
-                        BgRow(row++, txText, BarLen(ip.LastSection.Tx, peak), ConsoleColor.Green);
+                        BgRow(row++, txText, BarLen(txBar, peak), ConsoleColor.Green);
                     else
                         TintedRow(row++, txText, ConsoleColor.Green);
                 }
                 if (_displayMode != DisplayMode.TxOnly)
                 {
                     if (_showBars)
-                        BgRow(row++, rxText, BarLen(ip.LastSection.Rx, peak), ConsoleColor.Cyan);
+                        BgRow(row++, rxText, BarLen(rxBar, peak), ConsoleColor.Cyan);
                     else
                         TintedRow(row++, rxText, ConsoleColor.Cyan);
                 }
@@ -403,6 +407,8 @@ namespace tiktop
             double[][] avgs          = { data.TxAvgs,   data.RxAvgs,   data.TotalAvgs };
             long[]     cumulatives   = { data.CumulativeTx, data.CumulativeRx, data.CumulativeTotal };
 
+            int footerAvgIdx = _sortWindow switch { SortWindow.Short => 0, SortWindow.Long => 2, _ => 1 };
+
             for (int i = 0; i < 3; i++)
             {
                 string left  = $"{lbls[i]}  cur:{FormatHelper.FormatTraffic(actuals[i], _bitsMode)}   peak:{FormatHelper.FormatTraffic(peaks[i], _bitsMode)}";
@@ -410,7 +416,7 @@ namespace tiktop
                 string text  = left.PadRight(W - rates.Length) + rates;
 
                 if (_showBars)
-                    BgRow(row++, text, BarLen(actuals[i], peaks[i]), colors[i]);
+                    BgRow(row++, text, BarLen((long)avgs[i][footerAvgIdx], peaks[i]), colors[i]);
                 else
                     TintedRow(row++, text, colors[i]);
             }
