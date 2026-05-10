@@ -7,7 +7,7 @@ using tik4net.Objects.Tool;
 namespace tiktop.Data
 {
     public enum SortMode      { Total, Tx, Rx }
-    public enum SortWindow    { Short, Medium, Long }
+    public enum SortWindow    { Short, Medium, Long, Cumulative }
     public enum AggregateMode { None, BySrc, ByDst, ByPort }
 
     public class DataStack
@@ -204,9 +204,10 @@ namespace tiktop.Data
                 // Sort aggregated IPs.
                 DataStackSectionIp[] sortedAgg = SortWindow switch
                 {
-                    SortWindow.Medium => SortByWindowAvgAgg(aggIps, mediumWindow, SortMode, groupKey, winLookup, nrOfItems),
-                    SortWindow.Long   => SortByWindowAvgAgg(aggIps, longWindow,   SortMode, groupKey, winLookup, nrOfItems),
-                    _                 => SortAggIps(aggIps, SortMode, nrOfItems),
+                    SortWindow.Medium     => SortByWindowAvgAgg(aggIps, mediumWindow, SortMode, groupKey, winLookup, nrOfItems),
+                    SortWindow.Long       => SortByWindowAvgAgg(aggIps, longWindow,   SortMode, groupKey, winLookup, nrOfItems),
+                    SortWindow.Cumulative => SortAggCumulative(aggIps, SortMode, groupKey, cumulLookup, nrOfItems),
+                    _                     => SortAggIps(aggIps, SortMode, nrOfItems),
                 };
 
                 topIpTraffic = sortedAgg.Select(aggIp =>
@@ -225,9 +226,10 @@ namespace tiktop.Data
             {
                 IEnumerable<DataStackSectionIp> sortedIps = SortWindow switch
                 {
-                    SortWindow.Medium => SortByWindowAvg(lastFinalizedSection.GetAllIps(), mediumWindow, SortMode, nrOfItems),
-                    SortWindow.Long   => SortByWindowAvg(lastFinalizedSection.GetAllIps(), longWindow,   SortMode, nrOfItems),
-                    _                 => lastFinalizedSection.GetTopIps(nrOfItems, SortMode),
+                    SortWindow.Medium     => SortByWindowAvg(lastFinalizedSection.GetAllIps(), mediumWindow, SortMode, nrOfItems),
+                    SortWindow.Long       => SortByWindowAvg(lastFinalizedSection.GetAllIps(), longWindow,   SortMode, nrOfItems),
+                    SortWindow.Cumulative => SortByCumulative(lastFinalizedSection.GetAllIps(), _cumulativeIp, SortMode, nrOfItems),
+                    _                     => lastFinalizedSection.GetTopIps(nrOfItems, SortMode),
                 };
                 topIpTraffic = sortedIps.Select(i =>
                 {
@@ -335,6 +337,36 @@ namespace tiktop.Data
                 _           => ip => { string k = groupKey(ip); return window.Average(s => (double)winLookup(s, k).Total); },
             };
             return candidates.OrderByDescending(avgFn).Take(take).ToArray();
+        }
+
+        private static DataStackSectionIp[] SortByCumulative(
+            IEnumerable<DataStackSectionIp> candidates,
+            Dictionary<string, (long tx, long rx)> cumulDict,
+            SortMode sort,
+            int take)
+        {
+            Func<DataStackSectionIp, long> key = ip =>
+            {
+                string k = $"{ip.SrcAddress}:{ip.SrcPort}-{ip.DstAddress}:{ip.DstPort}";
+                if (!cumulDict.TryGetValue(k, out var c)) return 0;
+                return sort switch { SortMode.Tx => c.tx, SortMode.Rx => c.rx, _ => c.tx + c.rx };
+            };
+            return candidates.OrderByDescending(key).Take(take).ToArray();
+        }
+
+        private static DataStackSectionIp[] SortAggCumulative(
+            IEnumerable<DataStackSectionIp> candidates,
+            SortMode sort,
+            Func<DataStackSectionIp, string> groupKey,
+            Func<string, (long tx, long rx)> cumulLookup,
+            int take)
+        {
+            Func<DataStackSectionIp, long> key = ip =>
+            {
+                var (tx, rx) = cumulLookup(groupKey(ip));
+                return sort switch { SortMode.Tx => tx, SortMode.Rx => rx, _ => tx + rx };
+            };
+            return candidates.OrderByDescending(key).Take(take).ToArray();
         }
     }
 }
