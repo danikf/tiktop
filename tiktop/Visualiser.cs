@@ -263,13 +263,23 @@ namespace tiktop
             {
                 bool useDns     = _resolveMode == ResolveMode.DnsService;
                 bool useSvcName = _resolveMode != ResolveMode.IpPort;
-                bool isAgg      = ip.LastSection.SrcPort == "*";
+                bool isAgg     = ip.LastSection.SrcPort == "*";
+                bool isPortAgg = isAgg && ip.LastSection.DstAddress == "*" && ip.LastSection.DstPort != "*";
 
                 string local;
                 string remote;
-                if (isAgg)
+                if (isPortAgg)
                 {
-                    // Aggregated row: one side has "*" as a wildcard address.
+                    // Port-aggregated row: show service name in remote column.
+                    local  = FormatHelper.ShortenHostname("[*]", aw);
+                    string portLabel = useSvcName
+                        ? FormatHelper.FormatPort(ip.LastSection.DstPort).TrimStart(':')
+                        : ip.LastSection.DstPort;
+                    remote = portLabel.SafePrefix(aw);
+                }
+                else if (isAgg)
+                {
+                    // Src/dst-aggregated row: one side has "[*]" as a wildcard address.
                     string srcAddr = ip.LastSection.SrcAddress == "*" ? "[*]" : ip.LastSection.SrcAddress;
                     string dstAddr = ip.LastSection.DstAddress == "*" ? "[*]" : ip.LastSection.DstAddress;
                     if (useDns)

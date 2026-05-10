@@ -8,7 +8,7 @@ namespace tiktop.Data
 {
     public enum SortMode      { Total, Tx, Rx }
     public enum SortWindow    { Short, Medium, Long }
-    public enum AggregateMode { None, BySrc, ByDst }
+    public enum AggregateMode { None, BySrc, ByDst, ByPort }
 
     public class DataStack
     {
@@ -48,7 +48,7 @@ namespace tiktop.Data
         public void CycleAggregateMode()
         {
             lock (_lockObj)
-                AggregateMode = (AggregateMode)(((int)AggregateMode + 1) % 3);
+                AggregateMode = (AggregateMode)(((int)AggregateMode + 1) % 4);
         }
 
         public void ResetPeaks()
@@ -167,37 +167,57 @@ namespace tiktop.Data
             IEnumerable<DataSnapshotIpRow> topIpTraffic;
             if (AggregateMode != AggregateMode.None)
             {
-                bool bySrc = AggregateMode == AggregateMode.BySrc;
+                // Key extractor and row factory differ per aggregate mode.
+                Func<DataStackSectionIp, string> groupKey = AggregateMode switch {
+                    AggregateMode.BySrc  => ip => ip.SrcAddress,
+                    AggregateMode.ByDst  => ip => ip.DstAddress,
+                    _                    => ip => ip.DstPort,        // ByPort
+                };
+                Func<string, DataStackSectionIp> makeAgg = AggregateMode switch {
+                    AggregateMode.BySrc  => k => new DataStackSectionIp(k,   "*", "*", "*", 0, 0),
+                    AggregateMode.ByDst  => k => new DataStackSectionIp("*", "*", k,   "*", 0, 0),
+                    _                    => k => new DataStackSectionIp("*", "*", "*", k,   0, 0),
+                };
+                Func<DataStackSection, string, DataStackSectionIp> winLookup = AggregateMode switch {
+                    AggregateMode.BySrc  => (s, k) => s.GetAggregatedBySrc(k),
+                    AggregateMode.ByDst  => (s, k) => s.GetAggregatedByDst(k),
+                    _                    => (s, k) => s.GetAggregatedByPort(k),
+                };
+                Func<string, (long tx, long rx)> cumulLookup = AggregateMode switch {
+                    AggregateMode.BySrc  => k => GetCumulativeBySrc(k),
+                    AggregateMode.ByDst  => k => GetCumulativeByDst(k),
+                    _                    => k => GetCumulativeByPort(k),
+                };
 
                 // Build per-group aggregated IPs from the last section.
                 var aggIps = lastFinalizedSection.GetAllIps()
-                    .GroupBy(ip => bySrc ? ip.SrcAddress : ip.DstAddress)
+                    .GroupBy(groupKey)
                     .Select(g =>
                     {
                         long tx = g.Sum(ip => ip.Tx);
                         long rx = g.Sum(ip => ip.Rx);
-                        return bySrc
-                            ? new DataStackSectionIp(g.Key, "*", "*", "*", rx, tx)
-                            : new DataStackSectionIp("*", "*", g.Key, "*", rx, tx);
+                        var agg = makeAgg(g.Key);
+                        agg.Increase(tx, rx);  // set TX/RX (starts at 0)
+                        return agg;
                     })
                     .ToArray();
 
                 // Sort aggregated IPs.
                 DataStackSectionIp[] sortedAgg = SortWindow switch
                 {
-                    SortWindow.Medium => SortByWindowAvgAgg(aggIps, mediumWindow, SortMode, bySrc, nrOfItems),
-                    SortWindow.Long   => SortByWindowAvgAgg(aggIps, longWindow,   SortMode, bySrc, nrOfItems),
+                    SortWindow.Medium => SortByWindowAvgAgg(aggIps, mediumWindow, SortMode, groupKey, winLookup, nrOfItems),
+                    SortWindow.Long   => SortByWindowAvgAgg(aggIps, longWindow,   SortMode, groupKey, winLookup, nrOfItems),
                     _                 => SortAggIps(aggIps, SortMode, nrOfItems),
                 };
 
                 topIpTraffic = sortedAgg.Select(aggIp =>
                 {
-                    string addr = bySrc ? aggIp.SrcAddress : aggIp.DstAddress;
-                    var (cTx, cRx) = bySrc ? GetCumulativeBySrc(addr) : GetCumulativeByDst(addr);
+                    string key = groupKey(aggIp);
+                    var (cTx, cRx) = cumulLookup(key);
                     return new DataSnapshotIpRow(aggIp,
-                        shortWindow .Select(s => bySrc ? s.GetAggregatedBySrc(addr) : s.GetAggregatedByDst(addr)).ToArray(),
-                        mediumWindow.Select(s => bySrc ? s.GetAggregatedBySrc(addr) : s.GetAggregatedByDst(addr)).ToArray(),
-                        longWindow  .Select(s => bySrc ? s.GetAggregatedBySrc(addr) : s.GetAggregatedByDst(addr)).ToArray(),
+                        shortWindow .Select(s => winLookup(s, key)).ToArray(),
+                        mediumWindow.Select(s => winLookup(s, key)).ToArray(),
+                        longWindow  .Select(s => winLookup(s, key)).ToArray(),
                         cTx, cRx
                     );
                 });
@@ -274,6 +294,16 @@ namespace tiktop.Data
             return (tx, rx);
         }
 
+        private (long tx, long rx) GetCumulativeByPort(string dstPort)
+        {
+            // Key format: "srcAddr:srcPort-dstAddr:dstPort"
+            string suffix = ":" + dstPort;
+            long tx = 0, rx = 0;
+            foreach (var (k, v) in _cumulativeIp)
+                if (k.EndsWith(suffix)) { tx += v.tx; rx += v.rx; }
+            return (tx, rx);
+        }
+
         private static DataStackSectionIp[] SortAggIps(
             IEnumerable<DataStackSectionIp> candidates,
             SortMode sort,
@@ -292,7 +322,8 @@ namespace tiktop.Data
             IEnumerable<DataStackSectionIp> candidates,
             DataStackSection[] window,
             SortMode sort,
-            bool bySrc,
+            Func<DataStackSectionIp, string> groupKey,
+            Func<DataStackSection, string, DataStackSectionIp> winLookup,
             int take)
         {
             if (window.Length == 0)
@@ -300,18 +331,9 @@ namespace tiktop.Data
 
             Func<DataStackSectionIp, double> avgFn = sort switch
             {
-                SortMode.Tx => ip => {
-                    string a = bySrc ? ip.SrcAddress : ip.DstAddress;
-                    return window.Average(s => (double)(bySrc ? s.GetAggregatedBySrc(a) : s.GetAggregatedByDst(a)).Tx);
-                },
-                SortMode.Rx => ip => {
-                    string a = bySrc ? ip.SrcAddress : ip.DstAddress;
-                    return window.Average(s => (double)(bySrc ? s.GetAggregatedBySrc(a) : s.GetAggregatedByDst(a)).Rx);
-                },
-                _ => ip => {
-                    string a = bySrc ? ip.SrcAddress : ip.DstAddress;
-                    return window.Average(s => (double)(bySrc ? s.GetAggregatedBySrc(a) : s.GetAggregatedByDst(a)).Total);
-                },
+                SortMode.Tx => ip => { string k = groupKey(ip); return window.Average(s => (double)winLookup(s, k).Tx); },
+                SortMode.Rx => ip => { string k = groupKey(ip); return window.Average(s => (double)winLookup(s, k).Rx); },
+                _           => ip => { string k = groupKey(ip); return window.Average(s => (double)winLookup(s, k).Total); },
             };
             return candidates.OrderByDescending(avgFn).Take(take).ToArray();
         }

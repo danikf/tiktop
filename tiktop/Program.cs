@@ -92,9 +92,10 @@ namespace tiktop
                         string bars    = visualiser.ShowBars    ? ""          : " | no-bars";
                         string bits    = visualiser.BitsMode    ? " | bits"   : "";
                         string agg     = stack.AggregateMode switch {
-                            AggregateMode.BySrc => " | agg:src",
-                            AggregateMode.ByDst => " | agg:dst",
-                            _                   => "",
+                            AggregateMode.BySrc  => " | agg:src",
+                            AggregateMode.ByDst  => " | agg:dst",
+                            AggregateMode.ByPort => " | agg:port",
+                            _                    => "",
                         };
                         string filter  = !string.IsNullOrEmpty(visualiser.FilterText) ? $" | /{visualiser.FilterText}" : "";
                         string scroll  = visualiser.ScrollOffset > 0 ? $" | ↓{visualiser.ScrollOffset}" : "";
