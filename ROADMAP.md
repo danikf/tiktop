@@ -64,7 +64,7 @@ Cílem je konzolová aplikace podobná `iftop`, která se připojí na MikroTik 
 
 | # | Funkce | Popis |
 |---|--------|-------|
-| 7 | **Live host filter (`/`)** | Filtrovat zobrazené řádky podle substringu IP/hostname (lokální filtr ve Visualiser) |
+| 7 | ✅ **Live host filter (`/`)** | `/` otevře inline filter; Enter potvrdí, Esc nebo `/` vymaže; filtruje dle IP i DNS jména; status ukazuje `/text` |
 | 8 | **Kumulativní celkový přenos** | Vedle průměrů zobrazit celkový objem od spuštění (extra sloupec nebo detail) |
 | 9 | **Port-based grouping** | Seskupit toky podle dst portu – vidět celkový HTTPS/HTTP/SSH traffic agregovaně |
 

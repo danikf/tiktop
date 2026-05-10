@@ -96,11 +96,12 @@ namespace tiktop
                             AggregateMode.ByDst => " | agg:dst",
                             _                   => "",
                         };
+                        string filter  = !string.IsNullOrEmpty(visualiser.FilterText) ? $" | /{visualiser.FilterText}" : "";
                         string scroll  = visualiser.ScrollOffset > 0 ? $" | ↓{visualiser.ScrollOffset}" : "";
                         string freeze  = visualiser.FreezeOrder ? " | frozen" : "";
                         string pause   = visualiser.Paused      ? " | PAUSED" : "";
                         visualiser.SetStatus(
-                            $"sort:{sort} | {resolve}{disp}{scale}{bars}{bits}{agg}{scroll}{freeze}{pause} | q p 1-3 r a d t b B L o f j/k ±",
+                            $"sort:{sort} | {resolve}{disp}{scale}{bars}{bits}{agg}{filter}{scroll}{freeze}{pause} | q p 1-3 r a / d t b B L o f j/k ±",
                             ConsoleColor.Green);
                     }
 
@@ -117,6 +118,34 @@ namespace tiktop
                     {
                         if (!Console.KeyAvailable) continue;
                         var key = Console.ReadKey(intercept: true);
+
+                        // Filter input mode: '/' opens inline filter, Enter confirms, Esc clears.
+                        if (key.KeyChar == '/')
+                        {
+                            var fb = new System.Text.StringBuilder(visualiser.FilterText);
+                            // If filter already active, clear it; otherwise enter input mode.
+                            if (fb.Length > 0) { visualiser.SetFilter(""); UpdateStatus(); continue; }
+                            visualiser.SetStatus("filter: _", ConsoleColor.Yellow);
+                            while (!stopped.IsSet)
+                            {
+                                if (!Console.KeyAvailable) { System.Threading.Thread.Sleep(10); continue; }
+                                var fk = Console.ReadKey(intercept: true);
+                                if (fk.Key == ConsoleKey.Enter)
+                                    break;
+                                if (fk.Key == ConsoleKey.Escape)
+                                    { fb.Clear(); break; }
+                                if (fk.Key == ConsoleKey.Backspace && fb.Length > 0)
+                                    fb.Remove(fb.Length - 1, 1);
+                                else if (!char.IsControl(fk.KeyChar))
+                                    fb.Append(fk.KeyChar);
+                                visualiser.SetFilter(fb.ToString());
+                                visualiser.SetStatus($"filter: {fb}_", ConsoleColor.Yellow);
+                            }
+                            visualiser.SetFilter(fb.ToString());
+                            UpdateStatus();
+                            continue;
+                        }
+
                         switch (key.Key)
                         {
                             case ConsoleKey.Q:
