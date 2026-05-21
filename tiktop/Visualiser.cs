@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using tiktop.Data;
 using tiktop.Helpers;
@@ -509,11 +510,20 @@ namespace tiktop
                 ("f / Space", "pause / resume display"),
                 ("q / Esc",   "quit"),
             },
+            new[] { ("Credits", "") },
+            new[] {
+                ("tik4net",   "RouterOS API client  github.com/danikf/tik4net"),
+                ("DnsClient", "DNS reverse lookups  github.com/MichaCo/DnsClient.NET"),
+            },
         };
 
         private void DrawHelp()
         {
-            const string title  = "tiktop — keyboard shortcuts";
+            string version = System.Reflection.Assembly
+                .GetExecutingAssembly()
+                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+                ?.InformationalVersion.Split('+')[0] ?? "";
+            string title   = $"tiktop {version} — keyboard shortcuts";
             const string footer = "? or Esc  return to monitor";
             const int    keyW   = 12; // fixed key column width
 
