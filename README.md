@@ -36,10 +36,53 @@ TOTAL:cur:   5.3Mb   peak:  12.4Mb    3.8Mb   3.7Mb   3.4Mb   8.2Gb
 - **Friendly error messages** — connection refused, authentication failure, SSL errors
 - **Cross-platform** — Windows, Linux, macOS (.NET 9+)
 
+## RouterOS setup
+
+The router must have the API service enabled and reachable before tiktop can connect.
+
+### 1. Enable the API service
+
+```
+/ip service set api-ssl disabled=no port=8729
+```
+
+tiktop uses SSL by default (port 8729). To use plain API instead, add `--no-ssl` (port 8728):
+
+```
+/ip service set api disabled=no port=8728
+```
+
+### 2. Assign an SSL certificate (required for api-ssl)
+
+If no certificate is assigned to api-ssl, the connection will be refused. Generate a self-signed certificate directly on the router:
+
+```
+/certificate add name=api-ssl common-name=RouterOS days-valid=3650 key-size=2048
+/certificate sign api-ssl
+/ip service set api-ssl certificate=api-ssl
+```
+
+tiktop accepts self-signed certificates without any additional configuration on the client side.
+
+### 3. Create a monitoring user (recommended)
+
+A read-only account is sufficient — tiktop only reads traffic data:
+
+```
+/user group add name=monitor policy=read,api,!write,!reboot,!policy,!test,!password,!sniff,!sensitive,!romon
+/user add name=monitor password=secret group=monitor
+```
+
+Then connect:
+
+```bash
+tiktop --host 192.168.1.1 --user monitor --pass secret
+```
+
 ## Requirements
 
-- **.NET 9** SDK or runtime
-- **MikroTik router** with RouterOS API enabled (`/ip service` → `api` or `api-ssl`)
+- **.NET 9** runtime (not needed for pre-built self-contained binaries)
+- **MikroTik router** with RouterOS API configured (see above)
 - Network reachability to the router API port (default: 8729 SSL / 8728 plain)
 
 ## Installation
@@ -279,24 +322,3 @@ Visualiser               — renders to console via cursor positioning,
 | [tik4net](https://github.com/danikovsky/tik4net) | RouterOS API client (project reference) |
 | [DnsClient](https://github.com/MichaCo/DnsClient.NET) | Async DNS reverse lookups |
 
-## RouterOS setup
-
-Enable the API service on the router:
-
-```
-/ip service set api disabled=no
-/ip service set api-ssl disabled=no
-```
-
-Create a read-only user for monitoring (recommended):
-
-```
-/user group add name=monitor policy=read,api
-/user add name=monitor password=secret group=monitor
-```
-
-Then run:
-
-```bash
-tiktop --host 192.168.1.1 --user monitor --pass secret
-```
