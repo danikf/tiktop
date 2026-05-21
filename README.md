@@ -19,6 +19,8 @@ TOTAL:cur:   5.3Mb   peak:  12.4Mb    3.8Mb   3.7Mb   3.4Mb   8.2Gb
 
 *(Traffic level is shown as a colored background spanning the row — green for TX, cyan for RX — with inverted black text on the highlighted portion, iftop-style.)*
 
+![tiktop screenshot](docs/sample.png)
+
 ## Features
 
 - **Live top-talkers view** — connections ranked by Total / TX / RX traffic, sortable by current or 2 s / 10 s / 40 s window average
