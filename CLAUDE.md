@@ -39,7 +39,7 @@ Data flows in one direction: MikroTik → DataStack → DataSnapshot → Visuali
 
 ## Key details
 
-- Router credentials are hardcoded in `Program.cs` (`192.168.1.1`, `danik`, `secret`) — change before running in a different environment.
-- The monitored interface is also hardcoded: `"ether1 - WAN"`.
+- Router credentials are no longer hardcoded — all connection params are handled via CLI args, interactive prompts, and saved profiles.
+- The monitored interface is selected interactively or via `--interface`.
 - `DataStackSection` uses `IsFinalized` as a signal; only finalized sections are included in snapshots or averages.
 - There is a known copy-paste bug in `DataStack.AddRow`: `dstPort` is read from `items["src-port"]` instead of `items["dst-port"]`.

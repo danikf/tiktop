@@ -188,7 +188,7 @@ When multiple profiles are saved (or `_last` is incomplete), tiktop shows a numb
 
 ```
 Profiles:
-  1) _last      192.168.1.1  danik  ether1 - WAN  [pass]
+  1) _last      192.168.1.1  admin  ether1 - WAN  [pass]
   2) <NEW>      new connection
   3) home       192.168.1.1  admin  ether1         [pass]  2026-05-08
   4) office     10.0.0.1     admin  ether2                  2026-04-15
@@ -202,7 +202,7 @@ Press **Enter** to accept the default (`_last`), or type a number. `[pass]` mean
 If only `_last` exists and is fully complete (host, user, interface, password), tiktop connects immediately:
 
 ```
-[_last] 192.168.1.1  danik  ether1 - WAN  (--pick-profile to switch)
+[_last] 192.168.1.1  admin  ether1 - WAN  (--pick-profile to switch)
 ```
 
 Use `--pick-profile` to force the picker anyway (e.g. to switch to a different router).
