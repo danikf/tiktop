@@ -17,13 +17,16 @@ jobs:
         include:
           - os: windows-latest
             rid: win-x64
-            artifact: tiktop.exe
+            binary: tiktop.exe
+            output_name: tiktop.exe
           - os: ubuntu-latest
             rid: linux-x64
-            artifact: tiktop
+            binary: tiktop
+            output_name: tiktop
           - os: macos-latest
             rid: osx-x64
-            artifact: tiktop
+            binary: tiktop
+            output_name: tiktop-macos
 
     steps:
       - uses: actions/checkout@v4
@@ -43,20 +46,15 @@ jobs:
           -p:PublishSingleFile=true
           -o publish/${{ matrix.rid }}
 
-      - name: Rename artifact (non-Windows)
-        if: matrix.os != 'windows-latest'
-        run: mv publish/${{ matrix.rid }}/tiktop publish/${{ matrix.rid }}/tiktop-${{ matrix.rid }}
-
-      - name: Rename artifact (Windows)
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        run: Rename-Item publish/${{ matrix.rid }}/tiktop.exe tiktop-${{ matrix.rid }}.exe
+      - name: Rename artifact
+        if: matrix.binary != matrix.output_name
+        run: mv publish/${{ matrix.rid }}/${{ matrix.binary }} publish/${{ matrix.rid }}/${{ matrix.output_name }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: tiktop-${{ matrix.rid }}
-          path: publish/${{ matrix.rid }}/tiktop-${{ matrix.rid }}*
+          path: publish/${{ matrix.rid }}/${{ matrix.output_name }}
 
   release:
     name: Create GitHub Release
