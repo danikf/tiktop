@@ -48,19 +48,6 @@ namespace tiktop
                 .Select(kvp => (kvp.Key, kvp.Value))
                 .ToList();
 
-        // One-time migration: rename legacy "_last" profile to its stored Host value.
-        public void MigrateLastProfile()
-        {
-            if (!_root.Profiles.TryGetValue("_last", out var last)) return;
-            _root.Profiles.Remove("_last");
-            if (_root.LastUsed == "_last") _root.LastUsed = null;
-            if (!string.IsNullOrEmpty(last.Host) && !_root.Profiles.ContainsKey(last.Host))
-            {
-                _root.Profiles[last.Host] = last;
-                _root.LastUsed ??= last.Host;
-            }
-            Persist();
-        }
 
         // ── Write ──────────────────────────────────────────────────────────────
 

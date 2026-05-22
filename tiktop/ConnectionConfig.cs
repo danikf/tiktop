@@ -21,11 +21,11 @@ namespace tiktop
         // Profile actions (not part of the connection itself)
         public string? ProfileName  { get; private set; }
         public string? SaveAs       { get; private set; }
-        /// <summary>When true, the connection is NOT auto-saved to the _last profile.</summary>
+        /// <summary>When true, the connection is NOT auto-saved to the host profile.</summary>
         public bool    NoSave       { get; private set; }
         /// <summary>When true, auto-save and --save-as omit the password.</summary>
         public bool    SaveNoPass   { get; private set; }
-        /// <summary>When true, always show the profile picker (skip the _last shortcut path).</summary>
+        /// <summary>When true, always show the profile picker even when auto-connect would fire.</summary>
         public bool    PickProfile  { get; private set; }
 
         public int ResolvedPort => Port ?? (UseSsl ? 8729 : 8728);
@@ -36,7 +36,6 @@ namespace tiktop
         {
             var cfg      = new ConnectionConfig();
             var profiles = new ProfileManager();
-            profiles.MigrateLastProfile();
 
             for (int i = 0; i < args.Length; i++)
             {
@@ -458,15 +457,16 @@ namespace tiktop
             Console.WriteLine("      --save-no-pass          Save profile/auto-save without password");
             Console.WriteLine("      --list-profiles         List all saved profiles and exit");
             Console.WriteLine("      --delete-profile <n>    Delete a saved profile and exit");
-            Console.WriteLine("      --no-save               Do not auto-save connection as _last profile");
+            Console.WriteLine("      --no-save               Do not auto-save connection to host profile");
             Console.WriteLine("      --private               Alias for --no-save");
             Console.WriteLine();
             Console.WriteLine("  -h, --help                  Show this help and exit");
             Console.WriteLine();
             Console.WriteLine("Startup behaviour:");
-            Console.WriteLine("  No profiles saved   → prompts for all fields");
-            Console.WriteLine("  Only _last saved    → picker with _last / <NEW>  (1 interaction)");
-            Console.WriteLine("  Multiple profiles   → shows picker, default = _last [Enter]");
+            Console.WriteLine("  Host given           → loads profile for that host automatically");
+            Console.WriteLine("  No host, 0 profiles  → prompts host, then remaining fields");
+            Console.WriteLine("  No host, 1 profile   → auto-connects (0 interactions if complete)");
+            Console.WriteLine("  No host, N profiles  → shows picker, default = most recently used");
             Console.WriteLine();
             Console.WriteLine($"Profiles stored in: {ProfileManager.ConfigDir}");
         }

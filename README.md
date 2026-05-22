@@ -31,7 +31,7 @@ TOTAL:cur:   5.3Mb   peak:  12.4Mb    3.8Mb   3.7Mb   3.4Mb   8.2Gb
 - **TX / RX display modes** — show both directions or only TX / RX (doubles visible connections)
 - **Bits or bytes** — toggle between `b/Kb/Mb` and `bit/Kbit/Mbit` display
 - **Freeze & pause** — freeze row order to keep stable positions; pause the entire display while data keeps accumulating
-- **Named connection profiles** — auto-saved `_last` + named profiles with encrypted passwords (DPAPI on Windows, AES-GCM on Linux/macOS)
+- **Host-keyed profiles** — each router is remembered by its address; profiles are loaded and updated automatically, with passwords encrypted (DPAPI on Windows, AES-GCM on Linux/macOS)
 - **Auto-detect SSL / plain API** — when no explicit `--ssl`/`--no-ssl` flag is given, tries SSL (port 8729) first with a 3 s timeout, falls back to plain API (port 8728); shows a step-by-step RouterOS setup guide if neither connects
 - **Dynamic layout** — adapts to terminal width and height automatically
 - **Friendly error messages** — connection refused, authentication failure, SSL errors, with inline RouterOS setup guide on connection failure
@@ -131,7 +131,7 @@ GitHub Actions builds `win-x64` and `linux-x64` self-contained binaries automati
 ## Usage
 
 ```
-tiktop [options]
+tiktop [<host>[:<port>]] [options]
 ```
 
 All parameters are optional — missing values are resolved from saved profiles or prompted interactively.
@@ -140,15 +140,18 @@ All parameters are optional — missing values are resolved from saved profiles 
 
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
-| `--host <ip>` | `-H` | prompted | Router IP address or hostname |
+| `<host>[:<port>]` | | prompted | Router IP/hostname as first positional arg (e.g. `192.168.1.1` or `192.168.1.1:8728`) |
+| `--host <host>[:<port>]` | `-H` | prompted | Same as positional — router IP or hostname, port optional |
 | `--user <name>` | `-u` | prompted | RouterOS username |
 | `--pass <password>` | `-p` | prompted | RouterOS password (masked input) |
 | `--interface <name>` | `-i` | picker | Interface to monitor (interactive list if omitted) |
-| `--port <port>` | | 8729 / 8728 | API port (default depends on SSL mode) |
+| `--port <port>` | | 8729 / 8728 | API port override |
 | `--ssl` | | auto | Force SSL connection, skip auto-detect |
 | `--no-ssl` | | auto | Force plain (non-SSL) connection, skip auto-detect |
 | `--count <n>` | `-n` | auto | Number of connection rows to display |
 | `--dns-server <ip>` | `-d` | system DNS | Custom DNS server for reverse lookups |
+
+Ports 8729 and 8728 are recognised as SSL / plain respectively and set the mode automatically (overridable with `--ssl` / `--no-ssl`).
 
 **Profiles:**
 
@@ -156,84 +159,90 @@ All parameters are optional — missing values are resolved from saved profiles 
 |--------|-------------|
 | `--profile <name>` | Load a saved profile directly (skips picker) |
 | `--pick-profile` | Force profile picker even when auto-connect would fire |
-| `--save-as <name>` | Save current params as a named profile after connecting |
-| `--save-no-pass` | Save profile / auto-save `_last` without the password |
+| `--save-as <name>` | Save current params under a custom name after connecting |
+| `--save-no-pass` | Save profile without storing the password |
 | `--list-profiles` | List all saved profiles and exit |
 | `--delete-profile <name>` | Delete a saved profile and exit |
-| `--no-save` / `--private` | Do not auto-save this connection as `_last` |
-| `--help` | `-h` | Show help and exit |
+| `--no-save` / `--private` | Do not auto-save this connection |
+| `--help` / `-h` | Show help and exit |
 
 ### Examples
 
 ```bash
-# First run — prompts for all values, then saves them as _last
+# First run — prompts for host, user, password, interface; saves profile as "192.168.1.1"
 tiktop
 
-# Subsequent runs — zero interactions if _last is complete
-tiktop
+# Same, host given directly — loads existing profile for that host if saved
+tiktop 192.168.1.1
 
-# Force profile picker to switch to a different profile
+# With inline port — infers plain API, loads/saves profile "192.168.1.1"
+tiktop 192.168.1.1:8728
+
+# Subsequent run for the same host — zero interactions if profile is complete
+tiktop 192.168.1.1
+
+# Switch to a different router via picker
 tiktop --pick-profile
 
-# Load a named profile directly
-tiktop --profile home-router
+# Load a custom-named profile directly
+tiktop --profile office
 
-# Fully specified on CLI
-tiktop -H 192.168.1.1 -u admin -p secret -i "ether1 - WAN"
+# Fully specified on CLI (no prompts, no profile lookup)
+tiktop 192.168.1.1 -u admin -p secret -i "ether1 - WAN" --no-save
 
-# Save named profile without storing password (will prompt each run)
-tiktop --save-as office --save-no-pass
+# Save under a custom name in addition to the host profile
+tiktop 192.168.1.1 --save-as home-router --save-no-pass
 ```
 
 ## Connection profiles
 
-tiktop remembers your last connection and supports named profiles so you never have to retype parameters.
+Each router gets its own profile keyed by its host address. tiktop loads and updates the profile automatically — you only type parameters once.
 
 ### Startup behaviour
 
 | Situation | Interactions |
 |-----------|-------------|
-| No profiles saved | Prompts for all fields (first-run experience) |
-| Only `_last` exists, complete + password saved | **0** — auto-connects, prints a one-line status |
-| Only `_last` exists, no password saved | Profile picker (Enter) + password prompt = **2** |
-| Multiple profiles exist | Profile picker, default = `_last` → **1** (+ password if not saved) |
-| `--private` / `--no-save` | Prompts for all fields, nothing saved |
+| Host given on CLI, profile exists and is complete | **0** — connects immediately |
+| Host given on CLI, profile incomplete or missing | Prompts only for missing fields |
+| No host given, no profiles saved | Prompts host → then remaining fields |
+| No host given, exactly 1 profile saved (complete) | **0** — prints status line, connects immediately |
+| No host given, multiple profiles saved | Profile picker → **1** interaction |
+| `--private` / `--no-save` | Prompts all fields, nothing saved |
 
 ### Profile picker
 
-When multiple profiles are saved (or `_last` is incomplete), tiktop shows a numbered menu:
+When multiple profiles are saved and no host is specified on the CLI:
 
 ```
 Profiles:
-  1) _last      192.168.1.1  admin  ether1 - WAN  [pass]
-  2) <NEW>      new connection
-  3) home       192.168.1.1  admin  ether1         [pass]  2026-05-08
-  4) office     10.0.0.1     admin  ether2                  2026-04-15
+  1) 192.168.1.1         admin  ether1 - WAN  [pass]  2026-05-20
+  2) 10.0.0.1            admin  ether2                 2026-04-15
+  3) <NEW>  enter a new host
 Select [1]:
 ```
 
-Press **Enter** to accept the default (`_last`), or type a number. `[pass]` means the password is stored and will not be prompted.
+Press **Enter** to accept the most recently used profile. `[pass]` means the password is stored.
 
 ### Auto-connect (0 interactions)
 
-If only `_last` exists and is fully complete (host, user, interface, password), tiktop connects immediately:
+When exactly one profile is saved and it is fully complete (host, user, interface, password):
 
 ```
-[_last] 192.168.1.1  admin  ether1 - WAN  (--pick-profile to switch)
+[192.168.1.1]  admin@192.168.1.1  ether1 - WAN  (--pick-profile to switch)
 ```
 
-Use `--pick-profile` to force the picker anyway (e.g. to switch to a different router).
+Use `--pick-profile` to force the picker (e.g. to switch to a different router).
 
-### Named profiles
+### Custom-named profiles
 
 ```bash
-# Save current connection as a named profile (asks whether to include password)
-tiktop --save-as home-router
+# Save under a custom name (in addition to the host profile)
+tiktop 192.168.1.1 --save-as home-router
 
-# Save without password (will prompt on each use)
-tiktop --save-as home-router --save-no-pass
+# Save without password
+tiktop 192.168.1.1 --save-as home-router --save-no-pass
 
-# Load a named profile directly, bypassing the picker
+# Load by custom name directly
 tiktop --profile home-router
 
 # List / delete
