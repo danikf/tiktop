@@ -13,6 +13,7 @@ namespace tiktop
     {
         static void Main(string[] args)
         {
+            Console.Clear();
             var cfg = ConnectionConfig.FromArgs(args);
 
             var dnsOptions = cfg.DnsServer != null
@@ -107,6 +108,7 @@ namespace tiktop
                     SaveNamedProfile(cfg);
 
                 var stopped = new ManualResetEventSlim(false);
+                Exception? debugException = null;
 
                 using (var visualiser = new Visualiser(dnsCache))
                 {
@@ -115,8 +117,20 @@ namespace tiktop
                         torch => stack.AddRow(torch),
                         ex =>
                         {
-                            visualiser.SetStatus($"Disconnected – {GetFriendlyError(ex)}", ConsoleColor.Red);
-                            stopped.Set();
+                            if (cfg.Debug)
+                            {
+                                debugException = ex;
+                                stopped.Set();
+                            }
+                            else if (IsNoSuchItem(ex))
+                            {
+                                visualiser.SetStatus($"Torch error – {GetFriendlyError(ex)}", ConsoleColor.Yellow);
+                            }
+                            else
+                            {
+                                visualiser.SetStatus($"Disconnected – {GetFriendlyError(ex)}", ConsoleColor.Red);
+                                stopped.Set();
+                            }
                         });
 
                     void UpdateStatus()
@@ -303,6 +317,9 @@ namespace tiktop
                     if (stopped.IsSet)
                         Thread.Sleep(2000);
                 }
+
+                if (debugException != null)
+                    PrintDebugDump(debugException);
             }
         }
 
@@ -429,6 +446,57 @@ namespace tiktop
                 Console.WriteLine("  After setup, retry:   tiktop --no-ssl");
                 Console.WriteLine("  Or with SSL instead:  tiktop");
             }
+            Console.ResetColor();
+        }
+
+        private static bool IsNoSuchItem(Exception ex)
+        {
+            var inner = ex.InnerException ?? ex;
+            return inner.Message.IndexOf("no such item", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static void PrintDebugDump(Exception ex)
+        {
+            Console.ResetColor();
+            Console.WriteLine();
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine("═══ DEBUG DUMP ═══════════════════════════════════════════════════════");
+            Console.ResetColor();
+            Console.WriteLine($"Time: {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}");
+            Console.WriteLine();
+
+            var e = ex;
+            int depth = 0;
+            while (e != null)
+            {
+                if (depth > 0)
+                {
+                    Console.ForegroundColor = ConsoleColor.DarkGray;
+                    Console.WriteLine($"── Inner exception #{depth} ──────────────────────────────────────────");
+                    Console.ResetColor();
+                }
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.Write("Type:    ");
+                Console.ResetColor();
+                Console.WriteLine(e.GetType().FullName);
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.Write("Message: ");
+                Console.ResetColor();
+                Console.WriteLine(e.Message);
+                if (e.StackTrace != null)
+                {
+                    Console.ForegroundColor = ConsoleColor.DarkGray;
+                    Console.WriteLine("Stack trace:");
+                    Console.ResetColor();
+                    Console.WriteLine(e.StackTrace);
+                }
+                Console.WriteLine();
+                e = e.InnerException;
+                depth++;
+            }
+
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine("══════════════════════════════════════════════════════════════════════");
             Console.ResetColor();
         }
 

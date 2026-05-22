@@ -19,6 +19,7 @@ namespace tiktop
         public string? DnsServer { get; set; }
 
         public bool   SwapDirection { get; set; }
+        public bool   Debug        { get; private set; }
 
         // Profile actions (not part of the connection itself)
         public string? ProfileName  { get; private set; }
@@ -96,6 +97,9 @@ namespace tiktop
                         break;
                     case "--pick-profile":
                         cfg.PickProfile = true;
+                        break;
+                    case "--debug":
+                        cfg.Debug = true;
                         break;
                     case "--list-profiles":
                         ListProfiles(profiles);
@@ -522,6 +526,8 @@ namespace tiktop
             Console.WriteLine("      --reset                 Delete all saved profiles and exit");
             Console.WriteLine("      --no-save               Do not auto-save connection to host profile");
             Console.WriteLine("      --private               Alias for --no-save");
+            Console.WriteLine();
+            Console.WriteLine("      --debug                 Crash on torch error with full diagnostics");
             Console.WriteLine();
             Console.WriteLine("  -h, --help, -?, /?          Show this help and exit");
             Console.WriteLine();
