@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
+using System.Threading.Tasks;
 using DnsClient;
 using tiktop.Data;
 using tiktop.Helpers;
@@ -21,15 +22,64 @@ namespace tiktop
             var dnsCache = new DnsCache(new LookupClient(dnsOptions));
 
             MikrotikWrapper mikrotik;
-            try
+            // Auto-detect: when neither --ssl nor --no-ssl nor a custom --port was given,
+            // try SSL first (3 s), then plain, before giving up.
+            bool autoDetect = !cfg.SslExplicit && cfg.Port == null;
+            if (autoDetect)
             {
-                mikrotik = new MikrotikWrapper(cfg.Host, cfg.User, cfg.Pass, cfg.UseSsl, cfg.ResolvedPort);
+                const int AutoTimeoutMs = 3000;
+                try
+                {
+                    mikrotik = TryConnect(cfg.Host, cfg.User, cfg.Pass, useSsl: true, port: 8729, AutoTimeoutMs);
+                }
+                catch (Exception sslEx) when (ShouldTryFallback(sslEx))
+                {
+                    Console.ForegroundColor = ConsoleColor.DarkYellow;
+                    Console.Write($"  SSL failed ({GetShortError(sslEx)}), trying plain… ");
+                    Console.ResetColor();
+                    try
+                    {
+                        mikrotik = TryConnect(cfg.Host, cfg.User, cfg.Pass, useSsl: false, port: 8728, AutoTimeoutMs);
+                        cfg.UseSsl = false;
+                        Console.ForegroundColor = ConsoleColor.DarkYellow;
+                        Console.WriteLine("connected.");
+                        Console.WriteLine("  Note: plain (unencrypted) API — consider enabling API-SSL.");
+                        Console.ResetColor();
+                    }
+                    catch (Exception plainEx)
+                    {
+                        Console.ForegroundColor = ConsoleColor.DarkYellow;
+                        Console.WriteLine($"failed ({GetShortError(plainEx)}).");
+                        Console.ResetColor();
+                        Console.WriteLine();
+                        ShowFatalError("Connection failed",
+                            $"Could not connect to {cfg.Host} — tried SSL (port 8729) and plain API (port 8728).");
+                        ShowApiSetupHelp(ssl: true);
+                        Environment.Exit(1);
+                        return;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Non-retriable: auth failure, host not found, etc.
+                    ShowFatalError("Connection failed", GetFriendlyError(ex));
+                    Environment.Exit(1);
+                    return;
+                }
             }
-            catch (Exception ex)
+            else
             {
-                ShowFatalError("Connection failed", GetFriendlyError(ex));
-                Environment.Exit(1);
-                return;
+                try
+                {
+                    mikrotik = new MikrotikWrapper(cfg.Host, cfg.User, cfg.Pass, cfg.UseSsl, cfg.ResolvedPort);
+                }
+                catch (Exception ex)
+                {
+                    ShowFatalError("Connection failed", GetFriendlyError(ex));
+                    ShowApiSetupHelp(ssl: cfg.UseSsl);
+                    Environment.Exit(1);
+                    return;
+                }
             }
 
             using (mikrotik)
@@ -302,6 +352,112 @@ namespace tiktop
                 return $"SSL/TLS error: {msg}  (try --no-ssl)";
 
             return msg;
+        }
+
+        // Run a blocking connection attempt on a thread-pool thread and enforce a wall-clock timeout.
+        // If the timeout fires first we dispose the connection if it eventually arrives (cleanup).
+        private static MikrotikWrapper TryConnect(string host, string user, string pass, bool useSsl, int port, int timeoutMs)
+        {
+            Exception? caught = null;
+            MikrotikWrapper? wrapper = null;
+
+            var task = Task.Run(() =>
+            {
+                try { wrapper = new MikrotikWrapper(host, user, pass, useSsl, port); }
+                catch (Exception ex) { caught = ex; }
+            });
+
+            if (!task.Wait(timeoutMs))
+            {
+                task.ContinueWith(_ => wrapper?.Dispose());
+                throw new TimeoutException("Connection timed out");
+            }
+
+            if (caught != null) throw caught;
+            return wrapper!;
+        }
+
+        // Returns true when a fallback to the other SSL mode is worth attempting.
+        private static bool ShouldTryFallback(Exception ex)
+        {
+            var inner = ex.InnerException ?? ex;
+            string msg = inner.Message;
+
+            // Credentials are wrong regardless of SSL mode — no point retrying.
+            if (msg.IndexOf("not logged in",   StringComparison.OrdinalIgnoreCase) >= 0 ||
+                msg.IndexOf("invalid user",    StringComparison.OrdinalIgnoreCase) >= 0 ||
+                msg.IndexOf("wrong password",  StringComparison.OrdinalIgnoreCase) >= 0 ||
+                msg.IndexOf("login failure",   StringComparison.OrdinalIgnoreCase) >= 0)
+                return false;
+
+            // Routing/DNS issues affect both ports equally.
+            if (inner is SocketException se)
+                return se.SocketErrorCode != SocketError.HostNotFound &&
+                       se.SocketErrorCode != SocketError.NetworkUnreachable;
+
+            // Timeout, connection refused, SSL errors → try the other mode.
+            return true;
+        }
+
+        private static string GetShortError(Exception ex)
+        {
+            var inner = ex.InnerException ?? ex;
+            if (inner is TimeoutException) return "timed out";
+            if (inner is SocketException se)
+                return se.SocketErrorCode switch
+                {
+                    SocketError.ConnectionRefused  => "connection refused",
+                    SocketError.TimedOut           => "timed out",
+                    SocketError.HostNotFound       => "host not found",
+                    SocketError.NetworkUnreachable => "network unreachable",
+                    _                              => se.SocketErrorCode.ToString()
+                };
+            if (inner.Message.IndexOf("ssl",         StringComparison.OrdinalIgnoreCase) >= 0 ||
+                inner.Message.IndexOf("tls",         StringComparison.OrdinalIgnoreCase) >= 0 ||
+                inner.Message.IndexOf("certificate", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "SSL/TLS error";
+            string s = inner.Message;
+            return s.Length > 60 ? s[..60] + "…" : s;
+        }
+
+        private static void ShowApiSetupHelp(bool ssl)
+        {
+            Console.WriteLine();
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            if (ssl)
+            {
+                Console.WriteLine("  RouterOS API-SSL setup (run in Winbox terminal or SSH):");
+                Console.ResetColor();
+                Console.WriteLine();
+                Console.WriteLine("  1) Create a self-signed certificate:");
+                Console.WriteLine("       /certificate add name=api-ssl common-name=api-ssl \\");
+                Console.WriteLine("         key-usage=digital-signature,key-encipherment days-valid=3650");
+                Console.WriteLine("       /certificate sign api-ssl");
+                Console.WriteLine();
+                Console.WriteLine("  2) Enable API-SSL service on port 8729:");
+                Console.WriteLine("       /ip service set api-ssl port=8729 certificate=api-ssl disabled=no");
+                Console.WriteLine();
+                Console.WriteLine("  3) (optional) Restrict to your management network:");
+                Console.WriteLine("       /ip service set api-ssl address=<mgmt-subnet>/24");
+                Console.WriteLine();
+                Console.WriteLine("  After setup, retry:   tiktop");
+                Console.WriteLine("  Or without SSL:       tiktop --no-ssl");
+            }
+            else
+            {
+                Console.WriteLine("  RouterOS plain API setup (run in Winbox terminal or SSH):");
+                Console.ResetColor();
+                Console.WriteLine();
+                Console.WriteLine("  1) Enable the API service on port 8728:");
+                Console.WriteLine("       /ip service set api port=8728 disabled=no");
+                Console.WriteLine();
+                Console.WriteLine("  2) (optional) Restrict to your management network:");
+                Console.WriteLine("       /ip service set api address=<mgmt-subnet>/24");
+                Console.WriteLine();
+                Console.WriteLine("  After setup, retry:   tiktop --no-ssl");
+                Console.WriteLine("  Or with SSL instead:  tiktop");
+            }
+            Console.ResetColor();
         }
 
         private static void ShowFatalError(string title, string detail)

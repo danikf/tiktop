@@ -32,37 +32,53 @@ TOTAL:cur:   5.3Mb   peak:  12.4Mb    3.8Mb   3.7Mb   3.4Mb   8.2Gb
 - **Bits or bytes** — toggle between `b/Kb/Mb` and `bit/Kbit/Mbit` display
 - **Freeze & pause** — freeze row order to keep stable positions; pause the entire display while data keeps accumulating
 - **Named connection profiles** — auto-saved `_last` + named profiles with encrypted passwords (DPAPI on Windows, AES-GCM on Linux/macOS)
+- **Auto-detect SSL / plain API** — when no explicit `--ssl`/`--no-ssl` flag is given, tries SSL (port 8729) first with a 3 s timeout, falls back to plain API (port 8728); shows a step-by-step RouterOS setup guide if neither connects
 - **Dynamic layout** — adapts to terminal width and height automatically
-- **Friendly error messages** — connection refused, authentication failure, SSL errors
+- **Friendly error messages** — connection refused, authentication failure, SSL errors, with inline RouterOS setup guide on connection failure
 - **Cross-platform** — Windows, Linux, macOS (.NET 9+)
 
 ## RouterOS setup
 
 The router must have the API service enabled and reachable before tiktop can connect.
 
-### 1. Enable the API service
+> **Tip:** If neither API service is enabled, tiktop prints this setup guide automatically after a failed connection attempt.
+
+### 1. Enable API-SSL (recommended)
+
+Generate a self-signed certificate directly on the router and attach it to the API-SSL service:
 
 ```
-/ip service set api-ssl disabled=no port=8729
-```
-
-tiktop uses SSL by default (port 8729). To use plain API instead, add `--no-ssl` (port 8728):
-
-```
-/ip service set api disabled=no port=8728
-```
-
-### 2. Assign an SSL certificate (required for api-ssl)
-
-If no certificate is assigned to api-ssl, the connection will be refused. Generate a self-signed certificate directly on the router:
-
-```
-/certificate add name=api-ssl common-name=RouterOS days-valid=3650 key-size=2048
+/certificate add name=api-ssl common-name=api-ssl \
+  key-usage=digital-signature,key-encipherment days-valid=3650
 /certificate sign api-ssl
-/ip service set api-ssl certificate=api-ssl
+/ip service set api-ssl port=8729 certificate=api-ssl disabled=no
 ```
 
-tiktop accepts self-signed certificates without any additional configuration on the client side.
+tiktop accepts self-signed certificates without any additional client-side configuration.
+
+Optionally restrict to a management subnet:
+
+```
+/ip service set api-ssl address=192.168.1.0/24
+```
+
+### 2. Enable plain API (alternative, unencrypted)
+
+Use this only if SSL is not available (e.g. older RouterOS without certificate support):
+
+```
+/ip service set api port=8728 disabled=no
+```
+
+Connect with `tiktop --no-ssl`. Credentials are transmitted unencrypted — restrict access by subnet:
+
+```
+/ip service set api address=192.168.1.0/24
+```
+
+### Auto-detect
+
+Without `--ssl` or `--no-ssl`, tiktop tries SSL (port 8729) first with a 3 s timeout, then falls back to plain API (port 8728). If the fallback succeeds, a warning is printed. If both fail, the relevant setup commands are shown.
 
 ### 3. Create a monitoring user (recommended)
 
@@ -128,8 +144,9 @@ All parameters are optional — missing values are resolved from saved profiles 
 | `--user <name>` | `-u` | prompted | RouterOS username |
 | `--pass <password>` | `-p` | prompted | RouterOS password (masked input) |
 | `--interface <name>` | `-i` | picker | Interface to monitor (interactive list if omitted) |
-| `--port <port>` | | 8729 / 8728 | API port (default depends on `--no-ssl`) |
-| `--no-ssl` | | SSL on | Use plain (non-SSL) API connection |
+| `--port <port>` | | 8729 / 8728 | API port (default depends on SSL mode) |
+| `--ssl` | | auto | Force SSL connection, skip auto-detect |
+| `--no-ssl` | | auto | Force plain (non-SSL) connection, skip auto-detect |
 | `--count <n>` | `-n` | auto | Number of connection rows to display |
 | `--dns-server <ip>` | `-d` | system DNS | Custom DNS server for reverse lookups |
 

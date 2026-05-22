@@ -12,6 +12,8 @@ namespace tiktop
         public string Pass      { get; set; } = "";
         public string Interface { get; set; } = "";
         public bool   UseSsl    { get; set; } = true;
+        /// <summary>True when --no-ssl (or --ssl) was explicitly passed on the command line.</summary>
+        public bool   SslExplicit { get; private set; }
         public int?   Port      { get; set; }
         public int?   Count     { get; set; }
         public string? DnsServer { get; set; }
@@ -60,6 +62,11 @@ namespace tiktop
                         break;
                     case "--no-ssl":
                         cfg.UseSsl = false;
+                        cfg.SslExplicit = true;
+                        break;
+                    case "--ssl":
+                        cfg.UseSsl = true;
+                        cfg.SslExplicit = true;
                         break;
                     case "-n": case "--count":
                         cfg.Count = int.Parse(NextArg(args, ref i, "--count"));
@@ -203,7 +210,7 @@ namespace tiktop
             if (Port      == null && p.Port      != null) Port      = p.Port;
             if (DnsServer == null && p.DnsServer != null) DnsServer = p.DnsServer;
             if (Count     == null && p.Count     != null) Count     = p.Count;
-            UseSsl = p.UseSsl;
+            if (!SslExplicit) UseSsl = p.UseSsl;
 
             if (applyPassword && string.IsNullOrEmpty(Pass) && p.PasswordProtected != null)
                 Pass = ProfileManager.Decrypt(p.PasswordProtected) ?? "";
@@ -371,7 +378,8 @@ namespace tiktop
             Console.WriteLine("  -p, --pass <password>     Password (prompted if omitted)");
             Console.WriteLine("  -i, --interface <name>    Interface to monitor");
             Console.WriteLine("      --port <port>         API port (default: 8729 SSL / 8728 plain)");
-            Console.WriteLine("      --no-ssl              Use plain (non-SSL) API connection");
+            Console.WriteLine("      --ssl                 Force SSL connection (skip auto-detect)");
+            Console.WriteLine("      --no-ssl              Force plain (non-SSL) connection (skip auto-detect)");
             Console.WriteLine("  -n, --count <n>           Number of rows to display");
             Console.WriteLine("  -d, --dns-server <ip>     DNS server for reverse lookups");
             Console.WriteLine();
