@@ -281,7 +281,27 @@ namespace tiktop
 
         private static string PickInterface(ConnectionConfig cfg, string? defaultIface)
         {
-            var interfaces = FetchInterfaces(cfg);
+            List<(string Name, string DefaultName)> interfaces;
+            while (true)
+            {
+                try
+                {
+                    interfaces = FetchInterfaces(cfg);
+                    break;
+                }
+                catch (Exception ex) when (IsAuthError(ex))
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine($"  Authentication failed: {(ex.InnerException ?? ex).Message}");
+                    Console.ResetColor();
+                    Console.Write($"Username [{cfg.User}]: ");
+                    string u = Console.ReadLine()?.Trim() ?? "";
+                    if (!string.IsNullOrEmpty(u)) cfg.User = u;
+                    Console.Write("Password: ");
+                    cfg.Pass = ReadMasked();
+                    Console.WriteLine();
+                }
+            }
 
             if (interfaces.Count == 0)
                 return PromptField("Interface", "", defaultIface ?? "ether1");
@@ -324,11 +344,24 @@ namespace tiktop
                     ))
                     .ToList();
             }
+            catch (Exception ex) when (IsAuthError(ex))
+            {
+                throw; // propagate to PickInterface so credentials can be re-prompted
+            }
             catch (Exception ex)
             {
                 Console.Error.WriteLine($"Warning: could not fetch interface list ({ex.Message})");
                 return new List<(string, string)>();
             }
+        }
+
+        private static bool IsAuthError(Exception ex)
+        {
+            string msg = (ex.InnerException ?? ex).Message;
+            return msg.IndexOf("not logged in",  StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   msg.IndexOf("invalid user",   StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   msg.IndexOf("wrong password", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   msg.IndexOf("login failure",  StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         // ── Profile management helpers ────────────────────────────────────────
