@@ -272,6 +272,7 @@ Profiles are stored in:
 | `a` | Cycle aggregation: **None → by-src (local IP) → by-dst (remote IP) → by-port (dst port)**; aggregated rows show `[*]` for wildcard sides; port mode shows service name (https/ssh/rdp…) in remote column |
 | `d` | Cycle address/port display: **dns+svc → ip+port → ip+svc** |
 | `t` | Cycle display mode: **Both → TX only → RX only** (doubles visible connections) |
+| `x` | Swap TX ↔ RX direction — use when monitoring a **LAN interface** where torch reports TX as router→client (download). Flips the direction for all rows and totals. The setting is saved to the profile and restored automatically next time. |
 | `b` | Toggle background bar highlighting on/off |
 | `B` | Toggle bits / bytes (`Mb` ↔ `Mbit`) |
 | `L` | Toggle linear / logarithmic scale |
@@ -301,7 +302,7 @@ TOTAL: cur: {now}   peak: {peak}   {2s}  {10s}  {40s}  {cumul}
 - **Background bar scale** is relative to the all-time peak total traffic. The colored background spans proportionally from the left edge of the terminal across the full row width, including the address text and statistics columns.
 - **TX row** (green background) shows outgoing traffic from the local side.
 - **RX row** (cyan background) shows incoming traffic to the local side.
-- **Local / remote** addresses are determined by comparing against the monitored interface's subnet. If DNS is enabled, hostnames are shown once resolved (long names are intelligently shortened to keep the last two domain components).
+- **Local / remote** addresses are determined by comparing against the monitored interface's subnet. If DNS is enabled, hostnames are shown once resolved (long names are intelligently shortened to keep the last two domain components). If TX and RX appear swapped (common when monitoring a LAN interface), press `x` to flip the direction — it is saved to the profile.
 - **Moving averages** use windows of 2 s (last 2 sections), 10 s, and 40 s.
 - The **footer status badge** shows current sort mode and DNS state.
 - On **disconnect**, the badge turns red with the error message; the app waits 2 s before exiting.
