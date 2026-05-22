@@ -163,8 +163,9 @@ Ports 8729 and 8728 are recognised as SSL / plain respectively and set the mode 
 | `--save-no-pass` | Save profile without storing the password |
 | `--list-profiles` | List all saved profiles and exit |
 | `--delete-profile <name>` | Delete a saved profile and exit |
+| `--reset` | Delete all saved profiles and exit |
 | `--no-save` / `--private` | Do not auto-save this connection |
-| `--help` / `-h` | Show help and exit |
+| `--help` / `-h` / `-?` / `/?` | Show help and exit |
 
 ### Examples
 
@@ -205,8 +206,7 @@ Each router gets its own profile keyed by its host address. tiktop loads and upd
 | Host given on CLI, profile exists and is complete | **0** — connects immediately |
 | Host given on CLI, profile incomplete or missing | Prompts only for missing fields |
 | No host given, no profiles saved | Prompts host → then remaining fields |
-| No host given, exactly 1 profile saved (complete) | **0** — prints status line, connects immediately |
-| No host given, multiple profiles saved | Profile picker → **1** interaction |
+| No host given, 1 or more profiles saved | Profile picker → **1** interaction |
 | `--private` / `--no-save` | Prompts all fields, nothing saved |
 
 ### Profile picker
@@ -225,13 +225,13 @@ Press **Enter** to accept the most recently used profile. `[pass]` means the pas
 
 ### Auto-connect (0 interactions)
 
-When exactly one profile is saved and it is fully complete (host, user, interface, password):
+When the host is given on the CLI and its profile is fully saved:
 
 ```
-[192.168.1.1]  admin@192.168.1.1  ether1 - WAN  (--pick-profile to switch)
+tiktop 192.168.1.1
 ```
 
-Use `--pick-profile` to force the picker (e.g. to switch to a different router).
+tiktop loads the profile silently and connects without any prompts.
 
 ### Custom-named profiles
 

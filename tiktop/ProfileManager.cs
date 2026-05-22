@@ -79,6 +79,12 @@ namespace tiktop
             Persist();
         }
 
+        public void Reset()
+        {
+            if (File.Exists(ConfigFile))
+                File.Delete(ConfigFile);
+        }
+
         // ── Crypto ─────────────────────────────────────────────────────────────
 
         public static string? Encrypt(string password)

@@ -41,8 +41,13 @@ namespace tiktop
             {
                 switch (args[i])
                 {
-                    case "-h": case "--help":
+                    case "-h": case "--help": case "-?": case "/?":
                         PrintHelp();
+                        Environment.Exit(0);
+                        break;
+                    case "--reset":
+                        profiles.Reset();
+                        Console.WriteLine("All saved profiles deleted.");
                         Environment.Exit(0);
                         break;
                     case "-H": case "--host":
@@ -169,20 +174,7 @@ namespace tiktop
                 return;
             }
 
-            // Exactly one profile and picker not forced → auto-connect (0 interactions if complete)
-            if (sorted.Count == 1 && !cfg.PickProfile)
-            {
-                var (name, p) = sorted[0];
-                cfg.ApplyProfile(p, applyPassword: true);
-                bool complete = !string.IsNullOrEmpty(cfg.Host) && !string.IsNullOrEmpty(cfg.User)
-                             && !string.IsNullOrEmpty(cfg.Pass)  && !string.IsNullOrEmpty(cfg.Interface);
-                if (complete)
-                    Console.WriteLine($"[{name}]  {cfg.User}@{cfg.Host}  {cfg.Interface}  (--pick-profile to switch)");
-                PromptMissing(cfg);
-                return;
-            }
-
-            // Multiple profiles (or picker forced) → let user choose
+            // One or more profiles → always show picker so user can choose or create new
             var chosen = ShowProfilePicker(sorted);
             if (chosen == null)
             {
@@ -457,16 +449,16 @@ namespace tiktop
             Console.WriteLine("      --save-no-pass          Save profile/auto-save without password");
             Console.WriteLine("      --list-profiles         List all saved profiles and exit");
             Console.WriteLine("      --delete-profile <n>    Delete a saved profile and exit");
+            Console.WriteLine("      --reset                 Delete all saved profiles and exit");
             Console.WriteLine("      --no-save               Do not auto-save connection to host profile");
             Console.WriteLine("      --private               Alias for --no-save");
             Console.WriteLine();
-            Console.WriteLine("  -h, --help                  Show this help and exit");
+            Console.WriteLine("  -h, --help, -?, /?          Show this help and exit");
             Console.WriteLine();
             Console.WriteLine("Startup behaviour:");
             Console.WriteLine("  Host given           → loads profile for that host automatically");
             Console.WriteLine("  No host, 0 profiles  → prompts host, then remaining fields");
-            Console.WriteLine("  No host, 1 profile   → auto-connects (0 interactions if complete)");
-            Console.WriteLine("  No host, N profiles  → shows picker, default = most recently used");
+            Console.WriteLine("  No host, 1+ profiles → shows picker (profile name = host address)");
             Console.WriteLine();
             Console.WriteLine($"Profiles stored in: {ProfileManager.ConfigDir}");
         }
