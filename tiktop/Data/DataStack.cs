@@ -30,7 +30,8 @@ namespace tiktop.Data
         public AggregateMode AggregateMode { get; private set; } = AggregateMode.None;
         public bool          SwapDirection { get { lock (_lockObj) return _swapDirection; } }
 
-        private bool _swapDirection = false;
+        private bool _swapDirection    = false;
+        private bool _autoDetectDone  = false;
 
         public DataStack(IReadOnlyList<IPNetwork> localNetworks)
         {
@@ -86,12 +87,16 @@ namespace tiktop.Data
                     return;
                 }
 
-                // Normalize: local address is always treated as src so flows aggregate correctly
-                // regardless of which direction initiated the connection.
+                // Normalize: local address always stored as src so flows aggregate correctly.
                 if (_localNetworks.Count > 0 && IsLocal(torch.DstAddress) && !IsLocal(torch.SrcAddress))
+                    // dst confirmed local: swap so local is src, invert tx/rx
                     AddIpTraffic(torch.SectionNr, torch.DstAddress, torch.DstPort, torch.SrcAddress, torch.SrcPort, torch.Rx, torch.Tx);
-                else if (_swapDirection)
+                else if (_swapDirection && _localNetworks.Count > 0 && IsLocal(torch.SrcAddress) && !IsLocal(torch.DstAddress))
+                    // swap + src confirmed local (LAN interface): keep src as local, invert tx/rx only
                     AddIpTraffic(torch.SectionNr, torch.SrcAddress, torch.SrcPort, torch.DstAddress, torch.DstPort, torch.Rx, torch.Tx);
+                else if (_swapDirection)
+                    // swap + no confirmed local side (WAN/bridged): treat dst as local, invert tx/rx
+                    AddIpTraffic(torch.SectionNr, torch.DstAddress, torch.DstPort, torch.SrcAddress, torch.SrcPort, torch.Rx, torch.Tx);
                 else
                     AddIpTraffic(torch.SectionNr, torch.SrcAddress, torch.SrcPort, torch.DstAddress, torch.DstPort, torch.Tx, torch.Rx);
             }
@@ -101,6 +106,60 @@ namespace tiktop.Data
         {
             return IPAddress.TryParse(address, out var ip)
                 && _localNetworks.Any(n => n.Contains(ip));
+        }
+
+        private static bool IsRFC1918(string address)
+        {
+            if (!IPAddress.TryParse(address, out var ip) || ip.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
+                return false;
+            byte[] b = ip.GetAddressBytes();
+            return b[0] == 10
+                || (b[0] == 172 && b[1] >= 16 && b[1] <= 31)
+                || (b[0] == 192 && b[1] == 168);
+        }
+
+        // Analyses the first finalized section to decide whether swap should be enabled.
+        // Returns true if swap was auto-applied, false if detection ran with no change,
+        // null if there is not yet enough data.
+        public bool? TryAutoDetect()
+        {
+            lock (_lockObj)
+            {
+                if (_autoDetectDone || _swapDirection) return null;
+
+                var finalized = _itemsPerSection.Values.Where(s => s.IsFinalized).ToArray();
+                if (finalized.Length == 0) return null;
+
+                _autoDetectDone = true;
+
+                int publicSrcPrivateDst = 0; // typical WAN view: remote is src
+                int privateSrcPublicDst = 0; // typical LAN view: local is src
+
+                foreach (var section in finalized)
+                    foreach (var ip in section.GetAllIps())
+                    {
+                        bool srcPrivate = IsRFC1918(ip.SrcAddress);
+                        bool dstPrivate = IsRFC1918(ip.DstAddress);
+                        if (!srcPrivate && dstPrivate)  publicSrcPrivateDst++;
+                        if (srcPrivate  && !dstPrivate) privateSrcPublicDst++;
+                    }
+
+                int total = publicSrcPrivateDst + privateSrcPublicDst;
+                if (total < 3) return false; // too little mixed traffic to decide
+
+                if (publicSrcPrivateDst > privateSrcPublicDst * 2)
+                {
+                    _swapDirection = true;
+                    _itemsPerSection.Clear();
+                    _txPeak = _rxPeak = _totalPeak = 0;
+                    _cumulativeTx = _cumulativeRx = 0;
+                    _lastCumulativeSection = -1;
+                    _cumulativeIp.Clear();
+                    return true;
+                }
+
+                return false;
+            }
         }
 
         private void AddTotalTraffic(long section, long tx, long rx)

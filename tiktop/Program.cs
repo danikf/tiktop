@@ -129,6 +129,15 @@ namespace tiktop
 
                     using var timer = new Timer(_ =>
                     {
+                        var autoDetect = stack.TryAutoDetect();
+                        if (autoDetect == true)
+                        {
+                            cfg.SwapDirection = true;
+                            if (!cfg.NoSave) SaveHostProfile(cfg);
+                            visualiser.SetSwapDirection(true);
+                            visualiser.SetStatus("Direction auto-detected  x=undo", ConsoleColor.Yellow);
+                        }
+
                         var snapshot = stack.CreateSnapshot(visualiser.NrOfItems + visualiser.ScrollOffset);
                         visualiser.Draw(snapshot);
                     }, null, 0, 1000);
