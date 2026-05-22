@@ -46,6 +46,7 @@ namespace tiktop
         private bool   _paused      = false;
         private bool   _bitsMode    = false;
         private bool   _freezeOrder = false;
+        private bool   _swapDirection = false;
         private int    _scrollOffset = 0;
         private string _filterText  = "";
         private string[]? _frozenOrder = null;
@@ -128,6 +129,8 @@ namespace tiktop
                 if (!_freezeOrder) _frozenOrder = null;
             }
         }
+
+        public void SetSwapDirection(bool v) { lock (_lockObj) _swapDirection = v; }
 
         public void ToggleHelp()
         {
@@ -497,6 +500,7 @@ namespace tiktop
             new[] { ("Display", "") },
             new[] {
                 ("t",         "direction: TX+RX → TX only → RX only"),
+                ("x",         "swap TX ↔ RX direction  (LAN interface fix, saves to profile)"),
                 ("d",         "addresses: dns+svc → ip+port → ip+svc"),
                 ("b",         "toggle bar chart highlight"),
                 ("B",         "toggle bits / bytes  (Mb ↔ Mbit)"),
@@ -714,6 +718,7 @@ namespace tiktop
                 ("/",  filtVal,                                            !string.IsNullOrEmpty(_filterText)),
                 ("d",  dnsVal,                                             _resolveMode != ResolveMode.DnsService),
                 ("t",  dispVal,                                            _displayMode != DisplayMode.Both),
+                ("x",  _swapDirection ? (hints ? " swap" : "") : "",      _swapDirection),
                 ("b",  !_showBars   ? (hints ? " off"   : "") : "",       !_showBars),
                 ("B",  _bitsMode    ? (hints ? " bits"  : "") : "",       _bitsMode),
                 ("L",  _logScale    ? (hints ? " log"   : "") : "",       _logScale),
@@ -726,7 +731,7 @@ namespace tiktop
 
             string dirtyKey = $"ctrl|{_sortMode}|{_sortWindow}|{_aggregateMode}|{_resolveMode}|{_displayMode}" +
                               $"|{_logScale}|{_showBars}|{_bitsMode}|{_freezeOrder}|{_paused}" +
-                              $"|{_scrollOffset}|{_filterText}|{W}";
+                              $"|{_swapDirection}|{_scrollOffset}|{_filterText}|{W}";
             if (_rowBuf[row] == dirtyKey) return;
             _rowBuf[row] = dirtyKey;
 

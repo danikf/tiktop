@@ -18,6 +18,8 @@ namespace tiktop
         public int?   Count     { get; set; }
         public string? DnsServer { get; set; }
 
+        public bool   SwapDirection { get; set; }
+
         // Profile actions (not part of the connection itself)
         public string? ProfileName  { get; private set; }
         public string? SaveAs       { get; private set; }
@@ -236,6 +238,8 @@ namespace tiktop
             if (DnsServer == null && p.DnsServer != null) DnsServer = p.DnsServer;
             if (Count     == null && p.Count     != null) Count     = p.Count;
             if (!SslExplicit) UseSsl = p.UseSsl;
+
+            SwapDirection = p.SwapDirection;
 
             if (applyPassword && string.IsNullOrEmpty(Pass) && p.PasswordProtected != null)
                 Pass = ProfileManager.Decrypt(p.PasswordProtected) ?? "";

@@ -43,3 +43,4 @@ Data flows in one direction: MikroTik → DataStack → DataSnapshot → Visuali
 - The monitored interface is selected interactively or via `--interface`.
 - `DataStackSection` uses `IsFinalized` as a signal; only finalized sections are included in snapshots or averages.
 - There is a known copy-paste bug in `DataStack.AddRow`: `dstPort` is read from `items["src-port"]` instead of `items["dst-port"]`.
+- **TX/RX direction:** MikroTik torch reports TX/RX from the *interface's* perspective. On a WAN interface TX = upload (correct), but on a LAN interface TX = router→LAN client = download (inverted). The `x` key toggles `DataStack.SwapDirection`, which inverts TX/RX for flows where `src` is the local side. The setting is saved to the profile so it persists per router+interface combination.

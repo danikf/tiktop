@@ -96,6 +96,7 @@ namespace tiktop
                 }
 
                 var stack = new DataStack(localNetworks);
+                if (cfg.SwapDirection) stack.ToggleSwapDirection();
 
                 // Auto-save profile keyed by host, unless --no-save was passed
                 if (!cfg.NoSave)
@@ -121,6 +122,7 @@ namespace tiktop
                     void UpdateStatus()
                     {
                         visualiser.SetSortState(stack.SortMode, stack.SortWindow, stack.AggregateMode);
+                        visualiser.SetSwapDirection(stack.SwapDirection);
                     }
 
                     UpdateStatus();
@@ -265,6 +267,13 @@ namespace tiktop
                             case ConsoleKey.A:
                                 stack.CycleAggregateMode();
                                 visualiser.ResetScroll();
+                                UpdateStatus();
+                                break;
+
+                            case ConsoleKey.X:
+                                stack.ToggleSwapDirection();
+                                cfg.SwapDirection = stack.SwapDirection;
+                                if (!cfg.NoSave) SaveHostProfile(cfg);
                                 UpdateStatus();
                                 break;
 

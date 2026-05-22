@@ -55,14 +55,15 @@ namespace tiktop
         {
             var profile = new StoredProfile
             {
-                Host      = cfg.Host,
-                User      = cfg.User,
-                Interface = cfg.Interface,
-                Port      = cfg.Port,
-                UseSsl    = cfg.UseSsl,
-                DnsServer = cfg.DnsServer,
-                Count     = cfg.Count,
-                SavedAt   = DateTime.UtcNow,
+                Host          = cfg.Host,
+                User          = cfg.User,
+                Interface     = cfg.Interface,
+                Port          = cfg.Port,
+                UseSsl        = cfg.UseSsl,
+                DnsServer     = cfg.DnsServer,
+                Count         = cfg.Count,
+                SwapDirection = cfg.SwapDirection,
+                SavedAt       = DateTime.UtcNow,
                 PasswordProtected = savePassword && !string.IsNullOrEmpty(cfg.Pass)
                     ? Encrypt(cfg.Pass)
                     : null
@@ -188,14 +189,15 @@ namespace tiktop
 
     public class StoredProfile
     {
-        [JsonPropertyName("host")]      public string?   Host              { get; set; }
-        [JsonPropertyName("user")]      public string?   User              { get; set; }
-        [JsonPropertyName("password")]  public string?   PasswordProtected { get; set; }
-        [JsonPropertyName("interface")] public string?   Interface         { get; set; }
-        [JsonPropertyName("port")]      public int?      Port              { get; set; }
-        [JsonPropertyName("useSsl")]    public bool      UseSsl            { get; set; } = true;
-        [JsonPropertyName("dnsServer")] public string?   DnsServer         { get; set; }
-        [JsonPropertyName("count")]     public int?      Count             { get; set; }
-        [JsonPropertyName("savedAt")]   public DateTime? SavedAt           { get; set; }
+        [JsonPropertyName("host")]          public string?   Host              { get; set; }
+        [JsonPropertyName("user")]          public string?   User              { get; set; }
+        [JsonPropertyName("password")]      public string?   PasswordProtected { get; set; }
+        [JsonPropertyName("interface")]     public string?   Interface         { get; set; }
+        [JsonPropertyName("port")]          public int?      Port              { get; set; }
+        [JsonPropertyName("useSsl")]        public bool      UseSsl            { get; set; } = true;
+        [JsonPropertyName("dnsServer")]     public string?   DnsServer         { get; set; }
+        [JsonPropertyName("count")]         public int?      Count             { get; set; }
+        [JsonPropertyName("swapDirection")] public bool      SwapDirection     { get; set; }
+        [JsonPropertyName("savedAt")]       public DateTime? SavedAt           { get; set; }
     }
 }

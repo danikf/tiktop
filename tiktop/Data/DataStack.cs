@@ -28,6 +28,9 @@ namespace tiktop.Data
         public SortMode      SortMode      { get; private set; } = SortMode.Total;
         public SortWindow    SortWindow    { get; private set; } = SortWindow.Medium;
         public AggregateMode AggregateMode { get; private set; } = AggregateMode.None;
+        public bool          SwapDirection { get { lock (_lockObj) return _swapDirection; } }
+
+        private bool _swapDirection = false;
 
         public DataStack(IReadOnlyList<IPNetwork> localNetworks)
         {
@@ -57,13 +60,29 @@ namespace tiktop.Data
                 _txPeak = _rxPeak = _totalPeak = 0;
         }
 
+        public void ToggleSwapDirection()
+        {
+            lock (_lockObj)
+            {
+                _swapDirection = !_swapDirection;
+                _itemsPerSection.Clear();
+                _txPeak = _rxPeak = _totalPeak = 0;
+                _cumulativeTx = _cumulativeRx = 0;
+                _lastCumulativeSection = -1;
+                _cumulativeIp.Clear();
+            }
+        }
+
         public void AddRow(ToolTorch torch)
         {
             lock (_lockObj)
             {
                 if (string.IsNullOrEmpty(torch.SrcAddress))
                 {
-                    AddTotalTraffic(torch.SectionNr, torch.Tx, torch.Rx);
+                    // On LAN interfaces torch TX = router→LAN = download; swap restores local perspective.
+                    AddTotalTraffic(torch.SectionNr,
+                        _swapDirection ? torch.Rx : torch.Tx,
+                        _swapDirection ? torch.Tx : torch.Rx);
                     return;
                 }
 
@@ -71,6 +90,8 @@ namespace tiktop.Data
                 // regardless of which direction initiated the connection.
                 if (_localNetworks.Count > 0 && IsLocal(torch.DstAddress) && !IsLocal(torch.SrcAddress))
                     AddIpTraffic(torch.SectionNr, torch.DstAddress, torch.DstPort, torch.SrcAddress, torch.SrcPort, torch.Rx, torch.Tx);
+                else if (_swapDirection)
+                    AddIpTraffic(torch.SectionNr, torch.SrcAddress, torch.SrcPort, torch.DstAddress, torch.DstPort, torch.Rx, torch.Tx);
                 else
                     AddIpTraffic(torch.SectionNr, torch.SrcAddress, torch.SrcPort, torch.DstAddress, torch.DstPort, torch.Tx, torch.Rx);
             }
