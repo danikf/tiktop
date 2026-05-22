@@ -36,6 +36,7 @@ namespace tiktop
         {
             var cfg      = new ConnectionConfig();
             var profiles = new ProfileManager();
+            profiles.MigrateLastProfile();
 
             for (int i = 0; i < args.Length; i++)
             {
@@ -150,56 +151,76 @@ namespace tiktop
 
         private static void StartWithProfiles(ConnectionConfig cfg, ProfileManager profiles)
         {
+            // Host already known from CLI → load its profile directly, no picker needed
+            if (!string.IsNullOrEmpty(cfg.Host))
+            {
+                TryApplyHostProfile(cfg, profiles);
+                PromptMissing(cfg);
+                return;
+            }
+
             var sorted = profiles.GetProfilesSorted();
 
+            // No saved profiles → prompt host first, then try to load its profile
             if (sorted.Count == 0)
             {
+                cfg.Host = PromptField("Host", "", null);
+                TryApplyHostProfile(cfg, profiles);
                 PromptMissing(cfg);
                 return;
             }
 
-            // Show profile picker (1 interaction)
-            var chosen = ShowProfilePicker(sorted);
+            // Exactly one profile and picker not forced → auto-connect (0 interactions if complete)
+            if (sorted.Count == 1 && !cfg.PickProfile)
+            {
+                var (name, p) = sorted[0];
+                cfg.ApplyProfile(p, applyPassword: true);
+                bool complete = !string.IsNullOrEmpty(cfg.Host) && !string.IsNullOrEmpty(cfg.User)
+                             && !string.IsNullOrEmpty(cfg.Pass)  && !string.IsNullOrEmpty(cfg.Interface);
+                if (complete)
+                    Console.WriteLine($"[{name}]  {cfg.User}@{cfg.Host}  {cfg.Interface}  (--pick-profile to switch)");
+                PromptMissing(cfg);
+                return;
+            }
 
+            // Multiple profiles (or picker forced) → let user choose
+            var chosen = ShowProfilePicker(sorted);
             if (chosen == null)
             {
-                // <NEW>
-                PromptMissing(cfg);
-                return;
+                // <NEW>: prompt host, then try to load its profile
+                cfg.Host = PromptField("Host", "", null);
+                TryApplyHostProfile(cfg, profiles);
             }
-
-            cfg.ApplyProfile(chosen, applyPassword: true);
+            else
+            {
+                cfg.ApplyProfile(chosen, applyPassword: true);
+            }
             PromptMissing(cfg);
         }
 
-        private static bool IsProfileComplete(StoredProfile p) =>
-            !string.IsNullOrEmpty(p.Host) &&
-            !string.IsNullOrEmpty(p.User) &&
-            !string.IsNullOrEmpty(p.Interface);
+        // If a profile named cfg.Host exists, merge it into cfg (CLI args already take precedence).
+        private static void TryApplyHostProfile(ConnectionConfig cfg, ProfileManager profiles)
+        {
+            if (string.IsNullOrEmpty(cfg.Host)) return;
+            var p = profiles.Get(cfg.Host);
+            if (p != null) cfg.ApplyProfile(p, applyPassword: true);
+        }
 
         // Returns the chosen StoredProfile, or null for <NEW>.
         private static StoredProfile? ShowProfilePicker(
             List<(string Name, StoredProfile Profile)> sortedProfiles)
         {
-            // Build ordered list: _last, <NEW>, named profiles (date desc)
             var items = new List<(string Label, StoredProfile? Profile)>();
 
-            foreach (var (_, p) in sortedProfiles.Where(x => x.Name == "_last"))
-            {
-                string pass  = p.PasswordProtected != null ? " [pass]" : "";
-                string iface = p.Interface != null ? $"  {p.Interface}" : "";
-                items.Add(($"_last      {p.Host}  {p.User}{iface}{pass}", p));
-            }
-
-            items.Add(("<NEW>      new connection", null));
-
-            foreach (var (name, p) in sortedProfiles.Where(x => x.Name != "_last"))
+            foreach (var (name, p) in sortedProfiles)
             {
                 string pass  = p.PasswordProtected != null ? " [pass]" : "";
                 string iface = p.Interface != null ? $"  {p.Interface}" : "";
                 string date  = p.SavedAt.HasValue ? $"  {p.SavedAt.Value:yyyy-MM-dd}" : "";
-                items.Add(($"{name,-10} {p.Host}  {p.User}{iface}{pass}{date}", p));
+                items.Add(($"{name,-18} {p.User}{iface}{pass}{date}", p));
             }
+
+            items.Add(("<NEW>  enter a new host", null));
 
             Console.WriteLine("Profiles:");
             for (int i = 0; i < items.Count; i++)
@@ -335,10 +356,10 @@ namespace tiktop
             foreach (var (name, p) in sorted)
             {
                 string marker   = name == profiles.LastUsedName ? "*" : " ";
-                string passNote = p.PasswordProtected != null ? " [password saved]" : "";
+                string passNote = p.PasswordProtected != null ? " [pass]" : "";
                 string iface    = p.Interface != null ? $"  {p.Interface}" : "";
                 string date     = p.SavedAt.HasValue ? $"  ({p.SavedAt.Value:yyyy-MM-dd})" : "";
-                Console.WriteLine($"  {marker} {name,-20} {p.Host}  {p.User}{iface}{passNote}{date}");
+                Console.WriteLine($"  {marker} {name,-20} {p.User}{iface}{passNote}{date}");
             }
             Console.WriteLine($"\nConfig: {ProfileManager.ConfigDir}");
         }

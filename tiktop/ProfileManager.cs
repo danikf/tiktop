@@ -41,20 +41,25 @@ namespace tiktop
 
         public string? LastUsedName => _root.LastUsed;
 
-        // Returns profiles in display order: _last first, then others by SavedAt desc.
-        public List<(string Name, StoredProfile Profile)> GetProfilesSorted()
-        {
-            var result = new List<(string, StoredProfile)>();
-            if (_root.Profiles.TryGetValue("_last", out var last))
-                result.Add(("_last", last));
-
-            var others = _root.Profiles
-                .Where(kvp => kvp.Key != "_last")
+        // Returns profiles sorted by SavedAt descending (most recently used first).
+        public List<(string Name, StoredProfile Profile)> GetProfilesSorted() =>
+            _root.Profiles
                 .OrderByDescending(kvp => kvp.Value.SavedAt ?? DateTime.MinValue)
-                .Select(kvp => (kvp.Key, kvp.Value));
+                .Select(kvp => (kvp.Key, kvp.Value))
+                .ToList();
 
-            result.AddRange(others);
-            return result;
+        // One-time migration: rename legacy "_last" profile to its stored Host value.
+        public void MigrateLastProfile()
+        {
+            if (!_root.Profiles.TryGetValue("_last", out var last)) return;
+            _root.Profiles.Remove("_last");
+            if (_root.LastUsed == "_last") _root.LastUsed = null;
+            if (!string.IsNullOrEmpty(last.Host) && !_root.Profiles.ContainsKey(last.Host))
+            {
+                _root.Profiles[last.Host] = last;
+                _root.LastUsed ??= last.Host;
+            }
+            Persist();
         }
 
         // ── Write ──────────────────────────────────────────────────────────────

@@ -97,9 +97,9 @@ namespace tiktop
 
                 var stack = new DataStack(localNetworks);
 
-                // Auto-save as _last (with encrypted password), unless --no-save was passed
+                // Auto-save profile keyed by host, unless --no-save was passed
                 if (!cfg.NoSave)
-                    SaveLastProfile(cfg);
+                    SaveHostProfile(cfg);
 
                 // If --save-as was requested, save named profile now
                 if (cfg.SaveAs != null)
@@ -288,9 +288,9 @@ namespace tiktop
             }
         }
 
-        private static void SaveLastProfile(ConnectionConfig cfg)
+        private static void SaveHostProfile(ConnectionConfig cfg)
         {
-            try { new ProfileManager().Save("_last", cfg, savePassword: !cfg.SaveNoPass); }
+            try { new ProfileManager().Save(cfg.Host, cfg, savePassword: !cfg.SaveNoPass); }
             catch { /* non-fatal */ }
         }
 
