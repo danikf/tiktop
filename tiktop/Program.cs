@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
-using System.Threading.Tasks;
 using DnsClient;
 using tiktop.Data;
 using tiktop.Helpers;
@@ -30,16 +29,16 @@ namespace tiktop
                 const int AutoTimeoutMs = 3000;
                 try
                 {
-                    mikrotik = TryConnect(cfg.Host, cfg.User, cfg.Pass, useSsl: true, port: 8729, AutoTimeoutMs);
+                    mikrotik = MikrotikWrapper.Connect(cfg.Host, cfg.User, cfg.Pass, useSsl: true, port: 8729, AutoTimeoutMs);
                 }
-                catch (Exception sslEx) when (ShouldTryFallback(sslEx))
+                catch (Exception sslEx) when (MikrotikWrapper.ShouldTryFallback(sslEx))
                 {
                     Console.ForegroundColor = ConsoleColor.DarkYellow;
                     Console.Write($"  SSL failed ({GetShortError(sslEx)}), trying plain… ");
                     Console.ResetColor();
                     try
                     {
-                        mikrotik = TryConnect(cfg.Host, cfg.User, cfg.Pass, useSsl: false, port: 8728, AutoTimeoutMs);
+                        mikrotik = MikrotikWrapper.Connect(cfg.Host, cfg.User, cfg.Pass, useSsl: false, port: 8728, AutoTimeoutMs);
                         cfg.UseSsl = false;
                         Console.ForegroundColor = ConsoleColor.DarkYellow;
                         Console.WriteLine("connected.");
@@ -352,51 +351,6 @@ namespace tiktop
                 return $"SSL/TLS error: {msg}  (try --no-ssl)";
 
             return msg;
-        }
-
-        // Run a blocking connection attempt on a thread-pool thread and enforce a wall-clock timeout.
-        // If the timeout fires first we dispose the connection if it eventually arrives (cleanup).
-        private static MikrotikWrapper TryConnect(string host, string user, string pass, bool useSsl, int port, int timeoutMs)
-        {
-            Exception? caught = null;
-            MikrotikWrapper? wrapper = null;
-
-            var task = Task.Run(() =>
-            {
-                try { wrapper = new MikrotikWrapper(host, user, pass, useSsl, port); }
-                catch (Exception ex) { caught = ex; }
-            });
-
-            if (!task.Wait(timeoutMs))
-            {
-                task.ContinueWith(_ => wrapper?.Dispose());
-                throw new TimeoutException("Connection timed out");
-            }
-
-            if (caught != null) throw caught;
-            return wrapper!;
-        }
-
-        // Returns true when a fallback to the other SSL mode is worth attempting.
-        private static bool ShouldTryFallback(Exception ex)
-        {
-            var inner = ex.InnerException ?? ex;
-            string msg = inner.Message;
-
-            // Credentials are wrong regardless of SSL mode — no point retrying.
-            if (msg.IndexOf("not logged in",   StringComparison.OrdinalIgnoreCase) >= 0 ||
-                msg.IndexOf("invalid user",    StringComparison.OrdinalIgnoreCase) >= 0 ||
-                msg.IndexOf("wrong password",  StringComparison.OrdinalIgnoreCase) >= 0 ||
-                msg.IndexOf("login failure",   StringComparison.OrdinalIgnoreCase) >= 0)
-                return false;
-
-            // Routing/DNS issues affect both ports equally.
-            if (inner is SocketException se)
-                return se.SocketErrorCode != SocketError.HostNotFound &&
-                       se.SocketErrorCode != SocketError.NetworkUnreachable;
-
-            // Timeout, connection refused, SSL errors → try the other mode.
-            return true;
         }
 
         private static string GetShortError(Exception ex)
