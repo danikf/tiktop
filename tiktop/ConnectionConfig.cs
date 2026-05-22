@@ -301,6 +301,16 @@ namespace tiktop
                     cfg.Pass = ReadMasked();
                     Console.WriteLine();
                 }
+                catch (Exception ex)
+                {
+                    // Connection failed and no fallback is available — aborting is safer than
+                    // prompting for an interface name that can never be verified.
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.Error.WriteLine($"Cannot connect to {cfg.Host}: {(ex.InnerException ?? ex).Message}");
+                    Console.ResetColor();
+                    Environment.Exit(1);
+                    return ""; // unreachable
+                }
             }
 
             if (interfaces.Count == 0)
@@ -332,10 +342,11 @@ namespace tiktop
 
         private static List<(string Name, string DefaultName)> FetchInterfaces(ConnectionConfig cfg)
         {
-            try
+            // Local helper — opens a fresh connection and lists interfaces.
+            List<(string Name, string DefaultName)> DoFetch(bool useSsl, int port)
             {
-                var connType = cfg.UseSsl ? TikConnectionType.ApiSsl : TikConnectionType.Api;
-                using var conn = ConnectionFactory.OpenConnection(connType, cfg.Host, cfg.ResolvedPort, cfg.User, cfg.Pass);
+                var connType = useSsl ? TikConnectionType.ApiSsl : TikConnectionType.Api;
+                using var conn = ConnectionFactory.OpenConnection(connType, cfg.Host, port, cfg.User, cfg.Pass);
                 var rows = conn.CreateCommand("/interface/print").ExecuteList("name", "default-name");
                 return rows
                     .Select(r => (
@@ -344,15 +355,37 @@ namespace tiktop
                     ))
                     .ToList();
             }
+
+            bool autoDetect = !cfg.SslExplicit && cfg.Port == null;
+
+            try
+            {
+                return DoFetch(cfg.UseSsl, cfg.ResolvedPort);
+            }
             catch (Exception ex) when (IsAuthError(ex))
             {
-                throw; // propagate to PickInterface so credentials can be re-prompted
+                throw; // PickInterface re-prompts credentials
             }
-            catch (Exception ex)
+            catch (Exception ex) when (autoDetect && MikrotikWrapper.ShouldTryFallback(ex))
             {
-                Console.Error.WriteLine($"Warning: could not fetch interface list ({ex.Message})");
-                return new List<(string, string)>();
+                // Primary mode failed — try the opposite SSL mode (mirrors main auto-detect)
+                bool fallbackSsl  = !cfg.UseSsl;
+                int  fallbackPort = fallbackSsl ? 8729 : 8728;
+                try
+                {
+                    var result = DoFetch(fallbackSsl, fallbackPort);
+                    // Fallback worked: update config so the main connection skips auto-detect
+                    cfg.UseSsl     = fallbackSsl;
+                    cfg.SslExplicit = true;
+                    return result;
+                }
+                catch (Exception inner) when (IsAuthError(inner))
+                {
+                    throw; // PickInterface re-prompts credentials
+                }
+                // Fallback connection failure propagates → PickInterface aborts
             }
+            // Explicit mode connection failure propagates → PickInterface aborts
         }
 
         private static bool IsAuthError(Exception ex)
