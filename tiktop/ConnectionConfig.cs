@@ -46,7 +46,7 @@ namespace tiktop
                         Environment.Exit(0);
                         break;
                     case "-H": case "--host":
-                        cfg.Host = NextArg(args, ref i, "--host");
+                        ParseHostArg(NextArg(args, ref i, "--host"), cfg);
                         break;
                     case "-u": case "--user":
                         cfg.User = NextArg(args, ref i, "--user");
@@ -99,11 +99,24 @@ namespace tiktop
                         Environment.Exit(0);
                         break;
                     default:
-                        Console.Error.WriteLine($"Unknown argument: {args[i]}");
-                        PrintHelp();
-                        Environment.Exit(1);
+                        // First non-flag positional argument → host (optionally with port)
+                        if (!args[i].StartsWith("-") && string.IsNullOrEmpty(cfg.Host))
+                            ParseHostArg(args[i], cfg);
+                        else
+                        {
+                            Console.Error.WriteLine($"Unknown argument: {args[i]}");
+                            PrintHelp();
+                            Environment.Exit(1);
+                        }
                         break;
                 }
+            }
+
+            // Infer SSL mode from well-known ports when not set explicitly by a flag
+            if (!cfg.SslExplicit && cfg.Port.HasValue)
+            {
+                if      (cfg.Port == 8729) { cfg.UseSsl = true;  cfg.SslExplicit = true; }
+                else if (cfg.Port == 8728) { cfg.UseSsl = false; cfg.SslExplicit = true; }
             }
 
             // Explicit --profile: apply and fill any remaining missing fields
@@ -358,6 +371,40 @@ namespace tiktop
             return sb.ToString();
         }
 
+        // Parses "host", "host:port", or "[ipv6]:port" and writes results into cfg.
+        // Existing cfg.Port is only overwritten when the arg itself contains a port.
+        private static void ParseHostArg(string arg, ConnectionConfig cfg)
+        {
+            // [::1]:8729  — bracketed IPv6 with optional port
+            if (arg.StartsWith("["))
+            {
+                int close = arg.IndexOf(']');
+                if (close > 0 && close + 1 < arg.Length && arg[close + 1] == ':' &&
+                    int.TryParse(arg[(close + 2)..], out int p6))
+                {
+                    cfg.Host = arg[1..close];
+                    cfg.Port = p6;
+                }
+                else
+                {
+                    cfg.Host = close > 0 ? arg[1..close] : arg;
+                }
+                return;
+            }
+
+            // host:port — single colon only (bare IPv6 has more than one)
+            int colon = arg.IndexOf(':');
+            if (colon > 0 && arg.IndexOf(':', colon + 1) < 0 &&
+                int.TryParse(arg[(colon + 1)..], out int p))
+            {
+                cfg.Host = arg[..colon];
+                cfg.Port = p;
+                return;
+            }
+
+            cfg.Host = arg;
+        }
+
         private static string NextArg(string[] args, ref int i, string name)
         {
             if (i + 1 >= args.Length)
@@ -370,30 +417,30 @@ namespace tiktop
 
         private static void PrintHelp()
         {
-            Console.WriteLine("Usage: tiktop [options]");
+            Console.WriteLine("Usage: tiktop [<host>[:<port>]] [options]");
             Console.WriteLine();
             Console.WriteLine("Connection:");
-            Console.WriteLine("  -H, --host <ip>           Router IP or hostname");
-            Console.WriteLine("  -u, --user <name>         Username");
-            Console.WriteLine("  -p, --pass <password>     Password (prompted if omitted)");
-            Console.WriteLine("  -i, --interface <name>    Interface to monitor");
-            Console.WriteLine("      --port <port>         API port (default: 8729 SSL / 8728 plain)");
-            Console.WriteLine("      --ssl                 Force SSL connection (skip auto-detect)");
-            Console.WriteLine("      --no-ssl              Force plain (non-SSL) connection (skip auto-detect)");
-            Console.WriteLine("  -n, --count <n>           Number of rows to display");
-            Console.WriteLine("  -d, --dns-server <ip>     DNS server for reverse lookups");
+            Console.WriteLine("  -H, --host <host>[:<port>]  Router IP/hostname; port optional (e.g. 192.168.1.1:8728)");
+            Console.WriteLine("  -u, --user <name>           Username");
+            Console.WriteLine("  -p, --pass <password>       Password (prompted if omitted)");
+            Console.WriteLine("  -i, --interface <name>      Interface to monitor");
+            Console.WriteLine("      --port <port>           API port (default: 8729 SSL / 8728 plain)");
+            Console.WriteLine("      --ssl                   Force SSL connection (skip auto-detect)");
+            Console.WriteLine("      --no-ssl                Force plain (non-SSL) connection (skip auto-detect)");
+            Console.WriteLine("  -n, --count <n>             Number of rows to display");
+            Console.WriteLine("  -d, --dns-server <ip>       DNS server for reverse lookups");
             Console.WriteLine();
             Console.WriteLine("Profiles:");
-            Console.WriteLine("      --profile <name>      Load a saved profile");
-            Console.WriteLine("      --pick-profile        Show profile picker (even if auto-connect would fire)");
-            Console.WriteLine("      --save-as <name>      Save current params as a named profile");
-            Console.WriteLine("      --save-no-pass        Save profile/auto-save without password");
-            Console.WriteLine("      --list-profiles       List all saved profiles and exit");
-            Console.WriteLine("      --delete-profile <n>  Delete a saved profile and exit");
-            Console.WriteLine("      --no-save             Do not auto-save connection as _last profile");
-            Console.WriteLine("      --private             Alias for --no-save");
+            Console.WriteLine("      --profile <name>        Load a saved profile");
+            Console.WriteLine("      --pick-profile          Show profile picker (even if auto-connect would fire)");
+            Console.WriteLine("      --save-as <name>        Save current params as a named profile");
+            Console.WriteLine("      --save-no-pass          Save profile/auto-save without password");
+            Console.WriteLine("      --list-profiles         List all saved profiles and exit");
+            Console.WriteLine("      --delete-profile <n>    Delete a saved profile and exit");
+            Console.WriteLine("      --no-save               Do not auto-save connection as _last profile");
+            Console.WriteLine("      --private               Alias for --no-save");
             Console.WriteLine();
-            Console.WriteLine("  -h, --help                Show this help and exit");
+            Console.WriteLine("  -h, --help                  Show this help and exit");
             Console.WriteLine();
             Console.WriteLine("Startup behaviour:");
             Console.WriteLine("  No profiles saved   → prompts for all fields");
