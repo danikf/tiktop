@@ -59,17 +59,18 @@ git push origin v{version}
 
 ## 9. Create GitHub release
 
-Append a Downloads section to the changelog:
+Append a Downloads section to the changelog. Asset URLs follow the pattern
+`https://github.com/danikf/tiktop/releases/download/v{version}/{filename}`:
 
 ```
 {changelog_markdown}
 
 ## Downloads
-| File | Platform |
-|------|----------|
-| `tiktop.exe` | Windows (x64) |
-| `tiktop` | Linux (x64) |
-| `tiktop-macos` | macOS (x64) |
+| Platform | Download |
+|----------|----------|
+| Windows (x64) | [tiktop.exe](https://github.com/danikf/tiktop/releases/download/v{version}/tiktop.exe) |
+| Linux (x64) | [tiktop](https://github.com/danikf/tiktop/releases/download/v{version}/tiktop) |
+| macOS (x64) | [tiktop-macos](https://github.com/danikf/tiktop/releases/download/v{version}/tiktop-macos) |
 ```
 
 Then create the release:
