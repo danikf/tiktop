@@ -19,12 +19,19 @@ namespace tiktop
         public MikrotikWrapper(string host, string user, string pass, bool useSsl = true, int port = 8729)
         {
             var connType = useSsl ? TikConnectionType.ApiSsl : TikConnectionType.Api;
-            _connection = ConnectionFactory.OpenConnection(connType, host, port, user, pass);
+            // tik4net 4.0: AllowInvalidCertificate defaults to false and now also applies to API-SSL.
+            // RouterOS presents a self-signed certificate by default, so it must be opted in explicitly.
+            var setup = new TikConnectionSetup(host, user, pass)
+            {
+                Port = port,
+                AllowInvalidCertificate = true,
+            };
+            _connection = setup.Create(connType);
         }
 
         public void StartListening(string iface, Action<ToolTorch> onItemCallback, Action<Exception>? onError = null)
         {
-            _torchCmd = _connection.LoadAsync<ToolTorch>(
+            _torchCmd = _connection.LoadWithCallback<ToolTorch>(
                 onItemCallback,
                 ex => onError?.Invoke(ex),
                 _connection.CreateParameter("interface", iface),
@@ -39,16 +46,17 @@ namespace tiktop
                 _connection.CreateParameter("interface", iface));
 
             return addresses
-                .Where(a => !a.Disabled && !a.Invalid)
+                .Where(a => !(a.Disabled ?? false) && !a.Invalid)
                 .Select(a => ParseNetwork(a.Address))
                 .OfType<IPNetwork>()
                 .ToList();
         }
 
-        private static IPNetwork? ParseNetwork(string cidr)
+        private static IPNetwork? ParseNetwork(string? cidr)
         {
             try
             {
+                if (cidr == null) return null;
                 var slash = cidr.IndexOf('/');
                 if (slash < 0) return null;
                 var ip = IPAddress.Parse(cidr[..slash]);

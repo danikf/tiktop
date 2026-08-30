@@ -87,18 +87,24 @@ namespace tiktop.Data
                     return;
                 }
 
+                // tik4net 4.0 marks these torch fields nullable; a per-connection row always carries them.
+                string srcAddr = torch.SrcAddress;
+                string dstAddr = torch.DstAddress ?? "";
+                string srcPort = torch.SrcPort ?? "";
+                string dstPort = torch.DstPort ?? "";
+
                 // Normalize: local address always stored as src so flows aggregate correctly.
-                if (_localNetworks.Count > 0 && IsLocal(torch.DstAddress) && !IsLocal(torch.SrcAddress))
+                if (_localNetworks.Count > 0 && IsLocal(dstAddr) && !IsLocal(srcAddr))
                     // dst confirmed local: swap so local is src, invert tx/rx
-                    AddIpTraffic(torch.SectionNr, torch.DstAddress, torch.DstPort, torch.SrcAddress, torch.SrcPort, torch.Rx, torch.Tx);
-                else if (_swapDirection && _localNetworks.Count > 0 && IsLocal(torch.SrcAddress) && !IsLocal(torch.DstAddress))
+                    AddIpTraffic(torch.SectionNr, dstAddr, dstPort, srcAddr, srcPort, torch.Rx, torch.Tx);
+                else if (_swapDirection && _localNetworks.Count > 0 && IsLocal(srcAddr) && !IsLocal(dstAddr))
                     // swap + src confirmed local (LAN interface): keep src as local, invert tx/rx only
-                    AddIpTraffic(torch.SectionNr, torch.SrcAddress, torch.SrcPort, torch.DstAddress, torch.DstPort, torch.Rx, torch.Tx);
+                    AddIpTraffic(torch.SectionNr, srcAddr, srcPort, dstAddr, dstPort, torch.Rx, torch.Tx);
                 else if (_swapDirection)
                     // swap + no confirmed local side (WAN/bridged): treat dst as local, invert tx/rx
-                    AddIpTraffic(torch.SectionNr, torch.DstAddress, torch.DstPort, torch.SrcAddress, torch.SrcPort, torch.Rx, torch.Tx);
+                    AddIpTraffic(torch.SectionNr, dstAddr, dstPort, srcAddr, srcPort, torch.Rx, torch.Tx);
                 else
-                    AddIpTraffic(torch.SectionNr, torch.SrcAddress, torch.SrcPort, torch.DstAddress, torch.DstPort, torch.Tx, torch.Rx);
+                    AddIpTraffic(torch.SectionNr, srcAddr, srcPort, dstAddr, dstPort, torch.Tx, torch.Rx);
             }
         }
 

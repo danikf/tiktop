@@ -15,7 +15,7 @@ msbuild tiktop.sln
 tiktop\bin\Debug\tiktop.exe
 ```
 
-NuGet restore happens automatically via MSBuild. The `tik4net` package (v3.0.1) provides the RouterOS API client.
+NuGet restore happens automatically. The `tik4net` package (v4.0.0-alpha6) provides the RouterOS API client. Since tik4net 4.0 the O/R mapper ships inside the `tik4net` package — do **not** add a separate `tik4net.objects` / `tik4net.entities` reference. Local dev builds (`CI` unset) use a `ProjectReference` to the tik4net source tree instead; the CI build (`CI=true`) uses the NuGet package.
 
 ## Architecture
 
@@ -42,5 +42,7 @@ Data flows in one direction: MikroTik → DataStack → DataSnapshot → Visuali
 - Router credentials are no longer hardcoded — all connection params are handled via CLI args, interactive prompts, and saved profiles.
 - The monitored interface is selected interactively or via `--interface`.
 - `DataStackSection` uses `IsFinalized` as a signal; only finalized sections are included in snapshots or averages.
+- **API-SSL certificates:** RouterOS presents a self-signed cert. tik4net 4.0 rejects invalid certs by default (and `AllowInvalidCertificate` now applies to API-SSL, not just REST), so both connection sites (`MikrotikWrapper` ctor, `ConnectionConfig.FetchInterfaces`) build a `TikConnectionSetup { AllowInvalidCertificate = true }` instead of the bare `ConnectionFactory.OpenConnection` overload.
+- **Torch callback:** live streaming uses `ITikConnection.LoadWithCallback<ToolTorch>` (renamed from `LoadAsync` in tik4net 4.0).
 - There is a known copy-paste bug in `DataStack.AddRow`: `dstPort` is read from `items["src-port"]` instead of `items["dst-port"]`.
 - **TX/RX direction:** MikroTik torch reports TX/RX from the *interface's* perspective. On a WAN interface TX = upload (correct), but on a LAN interface TX = router→LAN client = download (inverted). The `x` key toggles `DataStack.SwapDirection`, which inverts TX/RX for flows where `src` is the local side. The setting is saved to the profile so it persists per router+interface combination.

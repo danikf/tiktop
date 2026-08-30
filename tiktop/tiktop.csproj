@@ -30,10 +30,11 @@
     <ProjectReference Include="..\..\..\tik4net\tik4net\tik4net\tik4net.csproj" />
     <ProjectReference Include="..\..\..\tik4net\tik4net\tik4net.objects\tik4net.objects.csproj" />
   </ItemGroup>
-  <!-- CI / standalone build: use published NuGet packages -->
+  <!-- CI / standalone build: use published NuGet packages.
+       Since tik4net 4.0 the O/R mapper (tik4net.objects.dll) ships inside the tik4net
+       package, so tik4net.entities / tik4net.objects must NOT be referenced separately. -->
   <ItemGroup Condition="'$(CI)' == 'true'">
-    <PackageReference Include="tik4net" Version="3.6.0" />
-    <PackageReference Include="tik4net.entities" Version="3.6.0" />
+    <PackageReference Include="tik4net" Version="4.0.0-alpha6" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\README.md">

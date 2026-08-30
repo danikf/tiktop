@@ -354,7 +354,13 @@ namespace tiktop
             List<(string Name, string DefaultName)> DoFetch(bool useSsl, int port)
             {
                 var connType = useSsl ? TikConnectionType.ApiSsl : TikConnectionType.Api;
-                using var conn = ConnectionFactory.OpenConnection(connType, cfg.Host, port, cfg.User, cfg.Pass);
+                // tik4net 4.0: self-signed RouterOS certs are rejected unless opted in explicitly.
+                var setup = new TikConnectionSetup(cfg.Host, cfg.User, cfg.Pass)
+                {
+                    Port = port,
+                    AllowInvalidCertificate = true,
+                };
+                using var conn = setup.Create(connType);
                 var rows = conn.CreateCommand("/interface/print").ExecuteList("name", "default-name");
                 return rows
                     .Select(r => (
