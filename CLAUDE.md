@@ -15,7 +15,7 @@ msbuild tiktop.sln
 tiktop\bin\Debug\tiktop.exe
 ```
 
-NuGet restore happens automatically. The `tik4net` package (v4.0.0-beta3) provides the RouterOS API client. Since tik4net 4.0 the O/R mapper ships inside the `tik4net` package — do **not** add a separate `tik4net.objects` / `tik4net.entities` reference. Local dev builds (`CI` unset) use a `ProjectReference` to the tik4net source tree instead; the CI build (`CI=true`) uses the NuGet package.
+NuGet restore happens automatically. The `tik4net` package (v4.0.0) provides the RouterOS API client. Since tik4net 4.0 the O/R mapper ships inside the `tik4net` package — do **not** add a separate `tik4net.objects` / `tik4net.entities` reference. Local dev builds (`CI` unset) use a `ProjectReference` to the tik4net source tree instead; the CI build (`CI=true`) uses the NuGet package.
 
 ## Architecture
 
